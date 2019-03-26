@@ -1,6 +1,16 @@
 import os
 
-def logname(beta, g, g_idx, r, r_idx, b):
-  if not os.path.isdir('logs'):
-    os.mkdir('logs')
-  return 'logs/expo%03d-g%d-%d-r%d-%d-b%d' % (beta, g, g_idx, r, r_idx, b)
+def logroot(job_id):
+  path = 'logs/%s' % job_id
+  os.makedirs(path, exist_ok=True)
+  return path
+
+
+def logmeta(job_id):
+  root = logroot(job_id)
+  return '%s/log-meta.txt' % root
+
+
+def logname(job_id, g_idx, r_idx):
+  root = logroot(job_id)
+  return '%s/g%d-r%d.txt' % (root, g_idx, r_idx)

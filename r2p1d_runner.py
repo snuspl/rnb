@@ -1,7 +1,7 @@
 """Runner implementation for the R(2+1)D model.
 """
 def runner(frame_queue,
-           beta, g, g_idx, r, r_idx, b,
+           job_id, g_idx, r_idx,
            sta_bar_semaphore, sta_bar_value, sta_bar_total,
            fin_bar_semaphore, fin_bar_value, fin_bar_total):
   # PyTorch seems to have an issue with sharing modules between
@@ -23,7 +23,8 @@ def runner(frame_queue,
         # the Python process in case it doesn't use the first GPU...
         # so we allocate a small tensor at the first GPU before doing anything
         # to avoid the problem altogether.
-        # This might be solvable by simply upgrading PyTorch...
+        # This issue may have been fixed in the latest PyTorch release.
+        # TODO #2: Update PyTorch version
         insurance = torch.randn(1, device=torch.device('cuda:0'))
 
         model = R2Plus1DClassifier(num_classes=400,
@@ -58,12 +59,12 @@ def runner(frame_queue,
           if tpl is None:
             break
 
-          trunner_start = time.time()
-          video, tenqueue_filename, tloader_start, tenqueue_data = tpl
+          time_runner_start = time.time()
+          video, time_enqueue_filename, time_loader_start, time_enqueue_data = tpl
 
           if video.device != device:
             video = video.to(device=device)
-          tinference_start = time.time()
+          time_inference_start = time.time()
 
           video = video.float()
           # (num_clips, 3, consecutive_frames, width, height)
@@ -72,14 +73,14 @@ def runner(frame_queue,
 
           outputs = model(video)
           stream.synchronize()
-          tinference_finish = time.time()
+          time_inference_finish = time.time()
 
           # there should be a nicer way to keep all these time measurements...
-          filename_queue_wait.append((tloader_start - tenqueue_filename) * 1000)
-          frame_extraction.append((tenqueue_data - tloader_start) * 1000)
-          frame_queue_wait.append((trunner_start - tenqueue_data) * 1000)
-          inter_gpu_comm.append((tinference_start - trunner_start) * 1000)
-          neural_net.append((tinference_finish - tinference_start) * 1000)
+          filename_queue_wait.append((time_loader_start - time_enqueue_filename) * 1000)
+          frame_extraction.append((time_enqueue_data - time_loader_start) * 1000)
+          frame_queue_wait.append((time_runner_start - time_enqueue_data) * 1000)
+          inter_gpu_comm.append((time_inference_start - time_runner_start) * 1000)
+          neural_net.append((time_inference_finish - time_inference_start) * 1000)
 
   with fin_bar_value.get_lock():
     fin_bar_value.value += 1
@@ -90,7 +91,7 @@ def runner(frame_queue,
 
   # write statistics AFTER the barrier so that
   # throughput is not affected by unnecessary file I/O
-  with open(logname(beta, g, g_idx, r, r_idx, b), 'w') as f:
+  with open(logname(job_id, g_idx, r_idx), 'w') as f:
     for i in range(len(filename_queue_wait)):
       f.write('%f %f %f %f %f\n' % (filename_queue_wait[i],
                                     frame_extraction[i],

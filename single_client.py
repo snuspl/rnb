@@ -30,8 +30,13 @@ def client(filename_queue, beta, num_videos,
   for label in os.listdir(root):
     for video in os.listdir(os.path.join(root, label)):
       videos.append(os.path.join(root, label, video))
+
+  if len(videos) < num_videos:
+    print('Available # videos %d < Requested # videos %d' % (len(videos), num_videos))
+    print('Will repeat videos to match quota!')
+    repeat_count = int(num_videos / len(videos)) + 1
+    videos = videos * repeat_count
   videos = videos[:num_videos]
-  print('Total # of videos: %d' % len(videos))
 
   with sta_bar_value.get_lock():
     sta_bar_value.value += 1

@@ -19,15 +19,18 @@ def loader(filename_queue, data_queue,
   import nvvl
   from r2p1d_sampler import R2P1DSampler
 
-  # the GPU id does NOT necessarily have to be 0
+  # The loader can be placed on any GPU
+  # For now, we place it on GPU 0 assuming at least one GPU is always used
+  g_idx = 0
+
   # Use our own CUDA stream to avoid synchronizing with other processes
-  with torch.cuda.device(0):
-    device = torch.device('cuda:0')
-    stream = torch.cuda.Stream(device=0)
+  with torch.cuda.device(g_idx):
+    device = torch.device('cuda:%d' % g_idx)
+    stream = torch.cuda.Stream(device=g_idx)
     with torch.cuda.stream(stream):
       with torch.no_grad():
         loader = nvvl.RnBLoader(width=112, height=112,
-                                consecutive_frames=8, device_id=0,
+                                consecutive_frames=8, device_id=g_idx,
                                 sampler=R2P1DSampler(clip_length=8))
 
         # first "warm up" the loader with a few videos
@@ -55,18 +58,22 @@ def loader(filename_queue, data_queue,
           if tpl is None:
             break
 
-          tloader_start = time.time()
-          filename, tenqueue_filename = tpl
+          time_loader_start = time.time()
+          filename, time_enqueue_filename = tpl
 
           loader.loadfile(filename)
+          # we only load one file, so loader.__iter__ returns only one item
           for frames in loader:
+            # in case we load multiple files in the future, then we would
+            # actually need to do something within this for loop
             pass
+          # close the file since we're done with it
           loader.flush()
 
           # enqueue frames with past and current timestamps
           data_queue.put((frames,
-                          tenqueue_filename,
-                          tloader_start,
+                          time_enqueue_filename,
+                          time_loader_start,
                           time.time()))
 
         # mark the end of the input stream

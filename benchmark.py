@@ -22,36 +22,47 @@ if __name__ == '__main__':
   import os
   import sys
   import time
+  from datetime import datetime as dt
   from torch.multiprocessing import SimpleQueue, Process, Semaphore, Value
 
   # change these if you want to use different client/loader/runner impls
-  from rnb_logging import logname
+  from rnb_logging import logmeta
   from single_client import client
   from r2p1d_loader import loader
   from r2p1d_runner import runner
 
   parser = argparse.ArgumentParser()
-  parser.add_argument('-b', '--beta',
+  parser.add_argument('-mi', '--mean_interval_ms',
                       help='Mean event interval time (Poisson), milliseconds',
                       type=int, default=100)
   parser.add_argument('-g', '--gpus', help='Number of GPUs to use',
                       type=int, default=1)
   parser.add_argument('-r', '--replicas_per_gpu',
                       help='Number of replicas per GPU', type=int, default=1)
-  parser.add_argument('-bs', '--batch_size', help='Video batch size per replca',
+  parser.add_argument('-b', '--batch_size', help='Video batch size per replica',
                       type=int, default=1)
   parser.add_argument('-v', '--videos', help='Total number of videos to run',
                       type=int, default=2000)
   args = parser.parse_args()
   print('Args:', args)
 
+  job_id = '%s-mi%d-g%d-r%d-b%d-v%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
+                                        args.mean_interval_ms,
+                                        args.gpus,
+                                        args.replicas_per_gpu,
+                                        args.batch_size,
+                                        args.videos)
+
+  # assume homogeneous placement of runners
+  # in case of a heterogeneous placement, this needs to be changed accordingly
   num_runners = args.gpus * args.replicas_per_gpu
 
   # barrier to ensure all processes start at the same time
   sta_bar_semaphore = Semaphore(0)
   sta_bar_value = Value('i', 0)
   # one client + one loader + one main process (this one) = 3
-  # this needs to be changed if there are multiple clients or loaders
+  # this needs to be changed if there are multiple loaders
+  # TODO #4: Multiple loaders
   sta_bar_total = num_runners + 3
 
   # barrier to ensure all processes finish at the same time
@@ -64,26 +75,28 @@ if __name__ == '__main__':
   # queue between loader and runner
   data_queue = SimpleQueue()
 
-  pclient = Process(target=client,
-                    args=(filename_queue, args.beta, args.videos,
-                          sta_bar_semaphore, sta_bar_value, sta_bar_total,
-                          fin_bar_semaphore, fin_bar_value, fin_bar_total))
-  ploader = Process(target=loader,
-                    args=(filename_queue, data_queue, num_runners,
-                          sta_bar_semaphore, sta_bar_value, sta_bar_total,
-                          fin_bar_semaphore, fin_bar_value, fin_bar_total))
-  prunners = []
+  process_client = Process(target=client,
+                           args=(filename_queue, args.mean_interval_ms, args.videos,
+                                 sta_bar_semaphore, sta_bar_value, sta_bar_total,
+                                 fin_bar_semaphore, fin_bar_value, fin_bar_total))
+
+  # TODO #4: Multiple loaders
+  process_loader = Process(target=loader,
+                           args=(filename_queue, data_queue, num_runners,
+                                 sta_bar_semaphore, sta_bar_value, sta_bar_total,
+                                 fin_bar_semaphore, fin_bar_value, fin_bar_total))
+
+  process_runner_list = []
   for g in range(args.gpus):
     for r in range(args.replicas_per_gpu):
-      prunners.append(Process(target=runner,
-                              args=(data_queue,
-                                    args.beta, args.gpus, g,
-                                    args.replicas_per_gpu, r, args.batch_size,
-                                    sta_bar_semaphore, sta_bar_value, sta_bar_total,
-                                    fin_bar_semaphore, fin_bar_value, fin_bar_total)))
+      process_runner_list.append(Process(target=runner,
+                                         args=(data_queue,
+                                               job_id, g, r,
+                                               sta_bar_semaphore, sta_bar_value, sta_bar_total,
+                                               fin_bar_semaphore, fin_bar_value, fin_bar_total)))
 
 
-  for p in [pclient, ploader] + prunners:
+  for p in [process_client, process_loader] + process_runner_list:
     p.start()
 
   # we should be able to hide this whole semaphore mess in a
@@ -97,8 +110,8 @@ if __name__ == '__main__':
 
   # we can exclude initialization time from the throughput measurement
   # by starting to measure time after the start barrier and not before
-  tstart = time.time()
-  print('START! %f' % tstart)
+  time_start = time.time()
+  print('START! %f' % time_start)
 
   with fin_bar_value.get_lock():
     fin_bar_value.value += 1
@@ -107,24 +120,17 @@ if __name__ == '__main__':
   fin_bar_semaphore.acquire()
   fin_bar_semaphore.release()
 
-  tend = time.time()
-  print('FINISH! %f' % tend)
-  total_time = tend - tstart
+  time_end = time.time()
+  print('FINISH! %f' % time_end)
+  total_time = time_end - time_start
   print('That took %f seconds' % total_time)
 
 
   print('Waiting for child processes to return...')
-  for p in [pclient, ploader] + prunners:
+  for p in [process_client, process_loader] + process_runner_list:
     p.join()
   
 
-  first_runner_log = logname(args.beta, args.gpus, 0,
-                             args.replicas_per_gpu, 0, args.batch_size)
-  tmp_log = 'tmp-log'
-  # Append 'num_videos total_time' to the first line of the first runner log
-  os.rename(first_runner_log, tmp_log)
-  with open(tmp_log, 'r') as fread:
-    with open(first_runner_log, 'w') as fwrite:
-      fwrite.write('%d %f\n' % (args.videos, total_time))
-      fwrite.write(fread.read())
-  os.remove(tmp_log)
+  with open(logmeta(job_id), 'w') as f:
+    f.write('Args: %s\n' % str(args))
+    f.write('%f %f' % (time_start, time_end))
