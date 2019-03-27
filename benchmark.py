@@ -27,7 +27,7 @@ if __name__ == '__main__':
 
   # change these if you want to use different client/loader/runner impls
   from rnb_logging import logmeta
-  from single_client import client
+  from client import client
   from r2p1d_loader import loader
   from r2p1d_runner import runner
 

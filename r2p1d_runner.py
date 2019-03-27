@@ -41,11 +41,12 @@ def runner(frame_queue,
         del tmp
 
 
-        filename_queue_wait = []
-        frame_extraction = []
-        frame_queue_wait = []
-        inter_gpu_comm = []
-        neural_net = []
+        time_enqueue_filename_list = []
+        time_loader_start_list = []
+        time_enqueue_data_list = []
+        time_runner_start_list = []
+        time_inference_start_list = []
+        time_inference_finish_list = []
 
         with sta_bar_value.get_lock():
           sta_bar_value.value += 1
@@ -76,11 +77,12 @@ def runner(frame_queue,
           time_inference_finish = time.time()
 
           # there should be a nicer way to keep all these time measurements...
-          filename_queue_wait.append((time_loader_start - time_enqueue_filename) * 1000)
-          frame_extraction.append((time_enqueue_data - time_loader_start) * 1000)
-          frame_queue_wait.append((time_runner_start - time_enqueue_data) * 1000)
-          inter_gpu_comm.append((time_inference_start - time_runner_start) * 1000)
-          neural_net.append((time_inference_finish - time_inference_start) * 1000)
+          time_enqueue_filename_list.append(time_enqueue_filename)
+          time_loader_start_list.append(time_loader_start)
+          time_enqueue_data_list.append(time_enqueue_data)
+          time_runner_start_list.append(time_runner_start)
+          time_inference_start_list.append(time_inference_start)
+          time_inference_finish_list.append(time_inference_finish)
 
   with fin_bar_value.get_lock():
     fin_bar_value.value += 1
@@ -92,21 +94,26 @@ def runner(frame_queue,
   # write statistics AFTER the barrier so that
   # throughput is not affected by unnecessary file I/O
   with open(logname(job_id, g_idx, r_idx), 'w') as f:
-    for i in range(len(filename_queue_wait)):
-      f.write('%f %f %f %f %f\n' % (filename_queue_wait[i],
-                                    frame_extraction[i],
-                                    frame_queue_wait[i],
-                                    inter_gpu_comm[i],
-                                    neural_net[i]))
+    f.write(' '.join(['enqeue_filename', 'loader_start', 'enqueue_data',
+                      'runner_start', 'inference_start', 'inference_finish']))
+    f.write('\n')
+    for tpl in zip(time_enqueue_filename_list, time_loader_start_list,
+                   time_enqueue_data_list, time_runner_start_list,
+                   time_inference_start_list, time_inference_finish_list):
+      f.write(' '.join(map(str, tpl)))
+      f.write('\n')
 
   # quick summary of the statistics gathered
-  print('G%dR%d Average filename queue wait time: %f ms' % \
-      (g_idx, r_idx, np.mean(filename_queue_wait[10:])))
-  print('G%dR%d Average frame extraction time: %f ms' % \
-      (g_idx, r_idx, np.mean(frame_extraction[10:])))
-  print('G%dR%d Average frame queue wait time: %f ms' % \
-      (g_idx, r_idx, np.mean(frame_queue_wait[10:])))
-  print('G%dR%d Average inter-GPU data transmission time: %f ms' % \
-      (g_idx, r_idx, np.mean(inter_gpu_comm[10:])))
-  print('G%dR%d Average neural net time: %f ms' % \
-      (g_idx, r_idx, np.mean(neural_net[10:])))
+  # we skip the first few inferences for stable results
+  NUM_SKIPS = 10
+  if g_idx == 0 and r_idx == 0:
+    print('Average filename queue wait time: %f ms' % \
+        (np.mean((np.array(time_loader_start_list) - np.array(time_enqueue_filename_list))[NUM_SKIPS:]) * 1000))
+    print('Average frame extraction time: %f ms' % \
+        (np.mean((np.array(time_enqueue_data_list) - np.array(time_loader_start_list))[NUM_SKIPS:]) * 1000))
+    print('Average frame queue wait time: %f ms' % \
+        (np.mean((np.array(time_runner_start_list) - np.array(time_enqueue_data_list))[NUM_SKIPS:]) * 1000))
+    print('Average inter-GPU data transmission time: %f ms' % \
+        (np.mean((np.array(time_inference_start_list) - np.array(time_runner_start_list))[NUM_SKIPS:]) * 1000))
+    print('Average neural net time: %f ms' % \
+        (np.mean((np.array(time_inference_finish_list) - np.array(time_inference_start_list))[NUM_SKIPS:]) * 1000))
