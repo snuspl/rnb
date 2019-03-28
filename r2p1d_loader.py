@@ -7,7 +7,7 @@ http://openaccess.thecvf.com/content_cvpr_2018/papers/Tran_A_Closer_Look_CVPR_20
 The frames are downsampled (default: 112x112) and sent to the data queue, as
 tensors of shape (num_clips, 3, consecutive_frames, width, height).
 """
-def loader(filename_queue, data_queue,
+def loader(filename_queue, frame_queue,
            num_runners,
            sta_bar_semaphore, sta_bar_value, sta_bar_total,
            fin_bar_semaphore, fin_bar_value, fin_bar_total):
@@ -71,14 +71,14 @@ def loader(filename_queue, data_queue,
           loader.flush()
 
           # enqueue frames with past and current timestamps
-          data_queue.put((frames,
+          frame_queue.put((frames,
                           time_enqueue_filename,
                           time_loader_start,
                           time.time()))
 
         # mark the end of the input stream
         for _ in range(num_runners):
-          data_queue.put(None)
+          frame_queue.put(None)
 
         loader.close()
 

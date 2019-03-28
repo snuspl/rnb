@@ -73,7 +73,7 @@ if __name__ == '__main__':
   # queue between client and loader
   filename_queue = SimpleQueue()
   # queue between loader and runner
-  data_queue = SimpleQueue()
+  frame_queue = SimpleQueue()
 
   process_client = Process(target=client,
                            args=(filename_queue, args.mean_interval_ms, args.videos,
@@ -82,7 +82,7 @@ if __name__ == '__main__':
 
   # TODO #4: Multiple loaders
   process_loader = Process(target=loader,
-                           args=(filename_queue, data_queue, num_runners,
+                           args=(filename_queue, frame_queue, num_runners,
                                  sta_bar_semaphore, sta_bar_value, sta_bar_total,
                                  fin_bar_semaphore, fin_bar_value, fin_bar_total))
 
@@ -90,7 +90,7 @@ if __name__ == '__main__':
   for g in range(args.gpus):
     for r in range(args.replicas_per_gpu):
       process_runner_list.append(Process(target=runner,
-                                         args=(data_queue,
+                                         args=(frame_queue,
                                                job_id, g, r,
                                                sta_bar_semaphore, sta_bar_value, sta_bar_total,
                                                fin_bar_semaphore, fin_bar_value, fin_bar_total)))
