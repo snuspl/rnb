@@ -31,7 +31,7 @@ def get_data(job_dir):
 
   The given directory is expected to contain a meta log file as well as timing
   logs for each gpu/replica, like the following example:
-  $ ls logs/logs/190327_162712-mi60-g2-r1-b1-v2000
+  $ ls logs/190327_162712-mi60-g2-r1-b1-v2000
   g0-r0.txt    g1-r0.txt    log-meta.txt
 
   Args:
@@ -71,7 +71,9 @@ def get_data_from_all_logs(log_dir='logs'):
 
   This function reads all data from subdirectories (each subdirectory should
   represent a single job) within `log_dir` and packs them into two large
-  DataFrames: a throughput DataFrame and a timing DataFrame.
+  DataFrames: a throughput DataFrame and a timing DataFrame. In case there
+  are multiple jobs with the same arguments, only the most recent job is
+  read; logs from old jobs are completely ignored.
 
   The throughput DataFrame contains the following columns:
     'mean_interval' (int, milliseconds)
@@ -117,11 +119,9 @@ def get_data_from_all_logs(log_dir='logs'):
       continue
     args_list.append(args)
 
-
     mean_interval, num_gpus, num_replicas_per_gpu, \
         batch_size, num_videos = args
     throughput = num_videos / (time_end - time_start)
-
 
     throughput_list.append({
         'mean_interval': mean_interval,

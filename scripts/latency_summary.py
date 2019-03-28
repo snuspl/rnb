@@ -1,3 +1,9 @@
+"""Sample script for demonstrating how to use parse_utils.
+
+Loads all data from the logs directory and calculates the mean latency
+for each job, grouped by the number of GPUs and mean event interval time.
+Note: this script assumes that logs for #GPUs=1,2,3,4,5,6 are available.
+"""
 from parse_utils import get_data_from_all_logs
 
 _, timing_df = get_data_from_all_logs()
