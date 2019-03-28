@@ -16,8 +16,8 @@ df = df[df.batch_size == 1]
 
 # remove irrelevant columns
 df = df.drop(['num_replicas_per_gpu',
-                            'batch_size',
-                            'num_videos'], axis=1)
+              'batch_size',
+              'num_videos'], axis=1)
 
 # calculate latencies
 df['filename_queue_wait'] = (df['time_loader_start'] - df['time_enqueue_filename']) * 1000
@@ -31,7 +31,11 @@ df = df.drop([c for c in df.columns if c.startswith('time')], axis=1)
 
 # aggregate by num_gpus and mean_interval
 groupby_keys = ['num_gpus', 'mean_interval']
-values_to_aggregate = ['filename_queue_wait', 'frame_extraction', 'frame_queue_wait', 'gpu_comm', 'neural_net']
+values_to_aggregate = ['filename_queue_wait',
+                       'frame_extraction',
+                       'frame_queue_wait',
+                       'gpu_comm',
+                       'neural_net']
 # calculate mean
 df = df.groupby(groupby_keys, as_index=False)[values_to_aggregate].mean()
 
