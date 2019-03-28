@@ -142,7 +142,7 @@ def get_data_from_all_logs(log_dir='logs'):
             'num_gpus': num_gpus,
             'gpu_index': g_idx,
             'num_replicas_per_gpu': num_replicas_per_gpu,
-            'replica_idx': r_idx,
+            'replica_index': r_idx,
             'batch_size': batch_size,
             'num_videos': num_videos,
             'time_enqueue_filename': enqueue_filename,
