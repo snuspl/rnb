@@ -91,7 +91,7 @@ def get_data_from_all_logs(log_dir='logs'):
     'num_gpus' (int)
     'gpu_index' (int)
     'num_replicas_per_gpu' (int)
-    'replica_idx' (int)
+    'replica_index' (int)
     'batch_size' (int)
     'num_videos' (int)
     'time_enqueue_filename' (float, seconds)
