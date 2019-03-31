@@ -4,7 +4,7 @@ For each video, we sample a certain number of clips (default: 10), which in turn
 are consisted of a certain number of consecutive frames (default: 8).
 http://openaccess.thecvf.com/content_cvpr_2018/papers/Tran_A_Closer_Look_CVPR_2018_paper.pdf
 
-The frames are downsampled (default: 112x112) and sent to the data queue, as
+The frames are downsampled (default: 112x112) and sent to the frame queue, as
 tensors of shape (num_clips, 3, consecutive_frames, width, height).
 """
 def loader(filename_queue, frame_queue,
