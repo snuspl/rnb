@@ -8,7 +8,7 @@ The frames are downsampled (default: 112x112) and sent to the data queue, as
 tensors of shape (num_clips, 3, consecutive_frames, width, height).
 """
 def loader(filename_queue, data_queue,
-           num_runners,
+           num_runners, idx,
            sta_bar_semaphore, sta_bar_value, sta_bar_total,
            fin_bar_semaphore, fin_bar_value, fin_bar_total):
   # PyTorch seems to have an issue with sharing modules between
@@ -19,18 +19,14 @@ def loader(filename_queue, data_queue,
   import nvvl
   from r2p1d_sampler import R2P1DSampler
 
-  # The loader can be placed on any GPU
-  # For now, we place it on GPU 0 assuming at least one GPU is always used
-  g_idx = 0
-
   # Use our own CUDA stream to avoid synchronizing with other processes
-  with torch.cuda.device(g_idx):
-    device = torch.device('cuda:%d' % g_idx)
-    stream = torch.cuda.Stream(device=g_idx)
+  with torch.cuda.device(idx):
+    device = torch.device('cuda:%d' % idx)
+    stream = torch.cuda.Stream(device=idx)
     with torch.cuda.stream(stream):
       with torch.no_grad():
         loader = nvvl.RnBLoader(width=112, height=112,
-                                consecutive_frames=8, device_id=g_idx,
+                                consecutive_frames=8, device_id=idx,
                                 sampler=R2P1DSampler(clip_length=8))
 
         # first "warm up" the loader with a few videos
@@ -77,8 +73,9 @@ def loader(filename_queue, data_queue,
                           time.time()))
 
         # mark the end of the input stream
-        for _ in range(num_runners):
-          data_queue.put(None)
+        if idx == 0:
+          for _ in range(num_runners):
+            data_queue.put(None)
 
         loader.close()
 
