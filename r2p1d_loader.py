@@ -72,9 +72,9 @@ def loader(filename_queue, frame_queue,
 
           # enqueue frames with past and current timestamps
           frame_queue.put((frames,
-                          time_enqueue_filename,
-                          time_loader_start,
-                          time.time()))
+                           time_enqueue_filename,
+                           time_loader_start,
+                           time.time()))
 
         # mark the end of the input stream
         for _ in range(num_runners):
