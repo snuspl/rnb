@@ -6,7 +6,7 @@ def parse_conf(conf):
   """Extract arguments from log meta files.
 
   Example line:
-  Args: Namespace(batch_size=1, gpus=2, mean_interval_ms=60, replicas_per_gpu=1, videos=2000)
+  Args: Namespace(batch_size=1, gpus=2, loaders=1, mean_interval_ms=60, replicas_per_gpu=1, videos=2000)
   """
   pattern = re.compile(r'mean_interval_ms=(\d+)')
   mi = int(pattern.search(conf).group(1))
@@ -23,7 +23,10 @@ def parse_conf(conf):
   pattern = re.compile(r'videos=(\d+)')
   v = int(pattern.search(conf).group(1))
 
-  return (mi, g, r, b, v)
+  pattern = re.compile(r'loaders=(\d+)')
+  l = int(pattern.search(conf).group(1))
+
+  return (mi, g, r, b, v, l)
 
 
 def get_data(job_dir):
@@ -31,12 +34,12 @@ def get_data(job_dir):
 
   The given directory is expected to contain a meta log file as well as timing
   logs for each gpu/replica, like the following example:
-  $ ls logs/190327_162712-mi60-g2-r1-b1-v2000
+  $ ls logs/190327_162712-mi60-g2-r1-b1-v2000-l1
   g0-r0.txt    g1-r0.txt    log-meta.txt
 
   Args:
     job_dir: the root log directory for a particular job
-             e.g., logs/190327_162712-mi60-g2-r1-b1-v2000
+             e.g., logs/190327_162712-mi60-g2-r1-b1-v2000-l1
   """
   job_inferences = {}
   for filename in os.listdir(job_dir):
@@ -81,6 +84,7 @@ def get_data_from_all_logs(log_dir='logs'):
     'num_replicas_per_gpu' (int)
     'batch_size' (int)
     'num_videos' (int)
+    'num_loaders' (int)
     'time_start' (float, seconds)
     'time_end' (float, seconds)
     'throughput' == num_videos / (time_end - time_start) (videos/sec)
@@ -94,6 +98,7 @@ def get_data_from_all_logs(log_dir='logs'):
     'replica_index' (int)
     'batch_size' (int)
     'num_videos' (int)
+    'num_loaders' (int)
     'time_enqueue_filename' (float, seconds)
     'time_loader_start' (float, seconds)
     'time_enqueue_frames' (float, seconds)
@@ -120,7 +125,7 @@ def get_data_from_all_logs(log_dir='logs'):
     args_list.append(args)
 
     mean_interval, num_gpus, num_replicas_per_gpu, \
-        batch_size, num_videos = args
+        batch_size, num_videos, num_loaders = args
     throughput = num_videos / (time_end - time_start)
 
     throughput_list.append({
@@ -129,6 +134,7 @@ def get_data_from_all_logs(log_dir='logs'):
         'num_replicas_per_gpu': num_replicas_per_gpu,
         'batch_size': batch_size,
         'num_videos': num_videos,
+        'num_loaders': num_loaders,
         'time_start': time_start,
         'time_end': time_end,
         'throughput': throughput,
@@ -145,6 +151,7 @@ def get_data_from_all_logs(log_dir='logs'):
             'replica_index': r_idx,
             'batch_size': batch_size,
             'num_videos': num_videos,
+            'num_loaders': num_loaders,
             'time_enqueue_filename': enqueue_filename,
             'time_loader_start': loader_start,
             'time_enqueue_frames': enqueue_frames,
