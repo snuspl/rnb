@@ -86,6 +86,7 @@ if __name__ == '__main__':
                                  args=(filename_queue, frame_queue, num_runners, l,
                                        sta_bar_semaphore, sta_bar_value, sta_bar_total,
                                        fin_bar_semaphore, fin_bar_value, fin_bar_total))
+                         for l in range(args.loaders)]
 
   process_runner_list = []
   for g in range(args.gpus):
