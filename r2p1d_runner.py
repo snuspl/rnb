@@ -43,7 +43,7 @@ def runner(frame_queue,
 
         time_enqueue_filename_list = []
         time_loader_start_list = []
-        time_enqueue_data_list = []
+        time_enqueue_frame_list = []
         time_runner_start_list = []
         time_inference_start_list = []
         time_inference_finish_list = []
@@ -61,7 +61,7 @@ def runner(frame_queue,
             break
 
           time_runner_start = time.time()
-          video, time_enqueue_filename, time_loader_start, time_enqueue_data = tpl
+          video, time_enqueue_filename, time_loader_start, time_enqueue_frames = tpl
 
           if video.device != device:
             video = video.to(device=device)
@@ -79,7 +79,7 @@ def runner(frame_queue,
           # there should be a nicer way to keep all these time measurements...
           time_enqueue_filename_list.append(time_enqueue_filename)
           time_loader_start_list.append(time_loader_start)
-          time_enqueue_data_list.append(time_enqueue_data)
+          time_enqueue_frame_list.append(time_enqueue_frames)
           time_runner_start_list.append(time_runner_start)
           time_inference_start_list.append(time_inference_start)
           time_inference_finish_list.append(time_inference_finish)
@@ -94,11 +94,11 @@ def runner(frame_queue,
   # write statistics AFTER the barrier so that
   # throughput is not affected by unnecessary file I/O
   with open(logname(job_id, g_idx, r_idx), 'w') as f:
-    f.write(' '.join(['enqeue_filename', 'loader_start', 'enqueue_data',
+    f.write(' '.join(['enqueue_filename', 'loader_start', 'enqueue_frames',
                       'runner_start', 'inference_start', 'inference_finish']))
     f.write('\n')
     for tpl in zip(time_enqueue_filename_list, time_loader_start_list,
-                   time_enqueue_data_list, time_runner_start_list,
+                   time_enqueue_frame_list, time_runner_start_list,
                    time_inference_start_list, time_inference_finish_list):
       f.write(' '.join(map(str, tpl)))
       f.write('\n')
@@ -110,10 +110,10 @@ def runner(frame_queue,
     print('Average filename queue wait time: %f ms' % \
         (np.mean((np.array(time_loader_start_list) - np.array(time_enqueue_filename_list))[NUM_SKIPS:]) * 1000))
     print('Average frame extraction time: %f ms' % \
-        (np.mean((np.array(time_enqueue_data_list) - np.array(time_loader_start_list))[NUM_SKIPS:]) * 1000))
+        (np.mean((np.array(time_enqueue_frame_list) - np.array(time_loader_start_list))[NUM_SKIPS:]) * 1000))
     print('Average frame queue wait time: %f ms' % \
-        (np.mean((np.array(time_runner_start_list) - np.array(time_enqueue_data_list))[NUM_SKIPS:]) * 1000))
-    print('Average inter-GPU data transmission time: %f ms' % \
+        (np.mean((np.array(time_runner_start_list) - np.array(time_enqueue_frame_list))[NUM_SKIPS:]) * 1000))
+    print('Average inter-GPU frames transmission time: %f ms' % \
         (np.mean((np.array(time_inference_start_list) - np.array(time_runner_start_list))[NUM_SKIPS:]) * 1000))
     print('Average neural net time: %f ms' % \
         (np.mean((np.array(time_inference_finish_list) - np.array(time_inference_start_list))[NUM_SKIPS:]) * 1000))
