@@ -43,15 +43,18 @@ if __name__ == '__main__':
                       type=int, default=1)
   parser.add_argument('-v', '--videos', help='Total number of videos to run',
                       type=int, default=2000)
+  parser.add_argument('-l', '--loaders', help='Number of loader processes to spawn',
+                      type=int, default=1)
   args = parser.parse_args()
   print('Args:', args)
 
-  job_id = '%s-mi%d-g%d-r%d-b%d-v%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
-                                        args.mean_interval_ms,
-                                        args.gpus,
-                                        args.replicas_per_gpu,
-                                        args.batch_size,
-                                        args.videos)
+  job_id = '%s-mi%d-g%d-r%d-b%d-v%d-l%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
+                                            args.mean_interval_ms,
+                                            args.gpus,
+                                            args.replicas_per_gpu,
+                                            args.batch_size,
+                                            args.videos,
+                                            args.loaders)
 
   # assume homogeneous placement of runners
   # in case of a heterogeneous placement, this needs to be changed accordingly
@@ -60,15 +63,13 @@ if __name__ == '__main__':
   # barrier to ensure all processes start at the same time
   sta_bar_semaphore = Semaphore(0)
   sta_bar_value = Value('i', 0)
-  # one client + one loader + one main process (this one) = 3
-  # this needs to be changed if there are multiple loaders
-  # TODO #4: Multiple loaders
-  sta_bar_total = num_runners + 3
+  # runners + loaders + one client + one main process (this one)
+  sta_bar_total = num_runners + args.loaders + 2
 
   # barrier to ensure all processes finish at the same time
   fin_bar_semaphore = Semaphore(0)
   fin_bar_value = Value('i', 0)
-  fin_bar_total = num_runners + 3
+  fin_bar_total = num_runners + args.loaders + 2
 
   # queue between client and loader
   filename_queue = SimpleQueue()
@@ -76,15 +77,15 @@ if __name__ == '__main__':
   frame_queue = SimpleQueue()
 
   process_client = Process(target=client,
-                           args=(filename_queue, args.mean_interval_ms, args.videos,
+                           args=(filename_queue, args.mean_interval_ms,
+                                 args.videos, args.loaders,
                                  sta_bar_semaphore, sta_bar_value, sta_bar_total,
                                  fin_bar_semaphore, fin_bar_value, fin_bar_total))
 
-  # TODO #4: Multiple loaders
-  process_loader = Process(target=loader,
-                           args=(filename_queue, frame_queue, num_runners,
-                                 sta_bar_semaphore, sta_bar_value, sta_bar_total,
-                                 fin_bar_semaphore, fin_bar_value, fin_bar_total))
+  process_loader_list = [Process(target=loader,
+                                 args=(filename_queue, frame_queue, num_runners, l,
+                                       sta_bar_semaphore, sta_bar_value, sta_bar_total,
+                                       fin_bar_semaphore, fin_bar_value, fin_bar_total))
 
   process_runner_list = []
   for g in range(args.gpus):
@@ -96,7 +97,7 @@ if __name__ == '__main__':
                                                fin_bar_semaphore, fin_bar_value, fin_bar_total)))
 
 
-  for p in [process_client, process_loader] + process_runner_list:
+  for p in [process_client] + process_loader_list + process_runner_list:
     p.start()
 
   # we should be able to hide this whole semaphore mess in a
@@ -127,7 +128,7 @@ if __name__ == '__main__':
 
 
   print('Waiting for child processes to return...')
-  for p in [process_client, process_loader] + process_runner_list:
+  for p in [process_client] + process_loader_list + process_runner_list:
     p.join()
   
 

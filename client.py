@@ -4,7 +4,7 @@ Reads video names from a hard-coded file path and sends them to the filename
 queue, one at a time. The interval time between enqueues is sampled from an
 exponential distribution, to model video inference queries as a Poisson process.
 """
-def client(filename_queue, beta, num_videos,
+def client(filename_queue, beta, num_videos, num_loaders,
            sta_bar_semaphore, sta_bar_value, sta_bar_total,
            fin_bar_semaphore, fin_bar_value, fin_bar_total):
   # PyTorch seems to have an issue with sharing modules between
@@ -51,7 +51,8 @@ def client(filename_queue, beta, num_videos,
     time.sleep(exponential(float(beta) / 1000)) # milliseconds --> seconds
 
   # mark the end of the input stream
-  filename_queue.put(None)
+  for _ in range(num_loaders):
+    filename_queue.put(None)
 
   with fin_bar_value.get_lock():
     fin_bar_value.value += 1
