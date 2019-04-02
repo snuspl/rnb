@@ -4,7 +4,7 @@ Reads video names from a hard-coded file path and sends them to the filename
 queue, one at a time. The interval time between enqueues is sampled from an
 exponential distribution, to model video inference queries as a Poisson process.
 """
-def client(filename_queue, beta, num_videos, num_loaders,
+def client(filename_queue, beta, num_videos, num_loaders, counter,
            sta_bar_semaphore, sta_bar_value, sta_bar_total,
            fin_bar_semaphore, fin_bar_value, fin_bar_total):
   # PyTorch seems to have an issue with sharing modules between
@@ -31,12 +31,8 @@ def client(filename_queue, beta, num_videos, num_loaders,
     for video in os.listdir(os.path.join(root, label)):
       videos.append(os.path.join(root, label, video))
 
-  if len(videos) < num_videos:
-    print('Available # videos %d < Requested # videos %d' % (len(videos), num_videos))
-    print('Will repeat videos to match quota!')
-    repeat_count = int(num_videos / len(videos)) + 1
-    videos = videos * repeat_count
-  videos = videos[:num_videos]
+  if len(videos) <= 0:
+    raise Exception('No video available.')
 
   with sta_bar_value.get_lock():
     sta_bar_value.value += 1
@@ -45,12 +41,24 @@ def client(filename_queue, beta, num_videos, num_loaders,
   sta_bar_semaphore.acquire()
   sta_bar_semaphore.release()
 
-  for video in videos:
+  video_idx = 0
+  # Exit the main loop when the counter reaches `num_videos`.
+  # Note that the counter's value will usually be much less than the actual
+  # number of video queries sent to the filename queue, because of the delay
+  # between the client and the runners. Nonetheless, this is not a problem
+  # because all timings after the `num_videos`-th video are discarded anyway.
+  while counter.value < num_videos:
+    video = videos[video_idx]
+    # come back to the front of the list if we're at the end
+    video_idx = (video_idx + 1) % len(videos)
+
     # enqueue filename with the current time
     filename_queue.put((video, time.time()))
     time.sleep(exponential(float(beta) / 1000)) # milliseconds --> seconds
 
   # mark the end of the input stream
+  # the loaders should exit by themselves, but we enqueue these markers just in
+  # case some loader is waiting on the queue
   for _ in range(num_loaders):
     filename_queue.put(None)
 

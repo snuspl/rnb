@@ -8,7 +8,7 @@ The frames are downsampled (default: 112x112) and sent to the frame queue, as
 tensors of shape (num_clips, 3, consecutive_frames, width, height).
 """
 def loader(filename_queue, frame_queue,
-           num_runners, idx,
+           num_runners, idx, counter, num_videos,
            sta_bar_semaphore, sta_bar_value, sta_bar_total,
            fin_bar_semaphore, fin_bar_value, fin_bar_total):
   # PyTorch seems to have an issue with sharing modules between
@@ -49,9 +49,12 @@ def loader(filename_queue, frame_queue,
         sta_bar_semaphore.acquire()
         sta_bar_semaphore.release()
 
-        while True:
+        # Exit the main loop when the counter reaches `num_videos`.
+        while counter.value < num_videos:
           tpl = filename_queue.get()
           if tpl is None:
+            # apparently, the client has already aborted which means the
+            # counter has reached `num_videos`; so we exit
             break
 
           time_loader_start = time.time()
@@ -73,6 +76,8 @@ def loader(filename_queue, frame_queue,
                            time.time()))
 
         # mark the end of the input stream
+        # the runners should exit by themselves, but we enqueue these markers
+        # just in case some runner is waiting on the queue
         if idx == 0:
           for _ in range(num_runners):
             frame_queue.put(None)
