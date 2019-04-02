@@ -22,6 +22,7 @@ if __name__ == '__main__':
   import os
   import sys
   import time
+  import py3nvml as nvml
   from datetime import datetime as dt
   from torch.multiprocessing import SimpleQueue, Process, Semaphore, Value
 
@@ -47,6 +48,18 @@ if __name__ == '__main__':
                       type=int, default=1)
   args = parser.parse_args()
   print('Args:', args)
+
+  free_gpus = nvml.get_free_gpus()
+  if args.gpus < 0:
+    sys.exit("Invalid number. The argument requires a positive integer.\nExiting..") 
+  
+  elif args.gpus > len(free_gpus):
+    sys.exit("The current machine you are using does not have {} GPUs. Please put a smaller number which does not exceed {}. \nExiting...".format(args.gpus, len(free_gpus)))
+  
+  elif args.gpus > len([i for i,e in enumerate(free_gpus) if e ==True]):
+    sys.exit("The number of GPUs you would like to use ({}) exceeds that of avaiable free GPUs ({}).\nExiting... ".format(args.gpus, len(free_gpus)))
+  else:
+    pass 
 
   job_id = '%s-mi%d-g%d-r%d-b%d-v%d-l%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
                                             args.mean_interval_ms,
