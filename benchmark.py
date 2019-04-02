@@ -55,8 +55,9 @@ if __name__ == '__main__':
   # In this case, GPU #5 has a process running, thus returning False.
   # GPUs without any process running, but consuming 10MB of memory does not return False yet. 
   
-  nvmlInit() 
-  # Handling almost-free-GPUs with 10MB of memory being consumed as occupied   
+  nvmlInit()
+
+  # Handling almost-free-GPUs as occupied   
   for i in range(len(free_gpus)):      
     handle = nvmlDeviceGetHandleByIndex(i) 
     info = nvmlDeviceGetMemoryInfo(handle)
@@ -85,7 +86,7 @@ if __name__ == '__main__':
       print('[WARNING] The number of GPUs (%d) to use exceeds that of available free GPUs. (%d)'
              % (args.gpus, len(free_gpus_index_list)))
     
-    sys.exit()
+    sys.exit('Exiting...')
 
   job_id = '%s-mi%d-g%d-r%d-b%d-v%d-l%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
                                             args.mean_interval_ms,
