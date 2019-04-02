@@ -22,6 +22,8 @@ if __name__ == '__main__':
   import os
   import sys
   import time
+  import py3nvml as nvml
+  from py3nvml.py3nvml import *
   from datetime import datetime as dt
   from torch.multiprocessing import SimpleQueue, Process, Semaphore, Value
 
@@ -48,36 +50,42 @@ if __name__ == '__main__':
   args = parser.parse_args()
   print('Args:', args)
   
-  try:
-    import py3nvml
-  except ImportError as error:
-    print('[Warning] py3nvml not installed yet. Will start installing py3nvml.\n')
-    os.system('pip install py3nvml')
-  
-  import py3nvml as nvml
-  from py3nvml.py3nvml import *
+  free_gpus = nvml.get_free_gpus() 
+  # return(list of Booleans): [True, True, True, True, True, False]
+  # In this case, GPU #5 has a process running, thus returning False.
+  # GPUs without any process running, but consuming 10MB of memory does not return False yet. 
   
   nvmlInit() 
-  
-  free_gpus = nvml.get_free_gpus()
-  
-  for i in range(len(free_gpus)):
+  # Handling almost-free-GPUs with 10MB of memory being consumed as occupied   
+  for i in range(len(free_gpus)):      
     handle = nvmlDeviceGetHandleByIndex(i) 
     info = nvmlDeviceGetMemoryInfo(handle)
-    if info.used >> 20 > 0: # occupied GPU
-      free_gpus[i] = False 
+    if info.used > 0:              
+      # info.used returns the consumed GPU memory usage in bits
+      # We will only regard GPU whose memory is not used at all as free, and the rest as occupied  
+      free_gpus[i] = False            
 
+  # Find the indices of free GPUs 
   free_gpus_index_list = [i for i,e in enumerate(free_gpus) if e] 
   
-  if args.gpus < 0:
-    sys.exit('%d is an invalid number of GPUs you can use. The argument requires a positive integer.\nExiting..' % (args.gpus)) 
+  invalid_argument = []
+  for arg in vars(args).keys():
+    # Expect all user-given argument to be positive. 
+    if vars(args)[arg] < 0:  
+      invalid_argument.append(arg) 
   
-  elif args.gpus > len(free_gpus):
-    sys.exit('The current machine you are using does not have %d GPUs. Please put a smaller number which does not exceed %d. \nExiting...' % (args.gpus, len(free_gpus)))
-  
-  elif args.gpus > len(free_gpus_index_list):
-    sys.exit('The number of GPUs you would like to use (%d) exceeds that of available free GPUs (%d).\nExiting...' % (args.gpus, len(free_gpus_index_list)))
+  if len(invalid_argument) > 0:
+    for x in invalid_argument:
+      print('[WARNING] Invalid number for %s. (%d) ' % (x, vars(args)[x]))
     
+    if args.gpus > len(free_gpus):
+      print('[WARNING] The current machine does not have %d GPUs.' % (args.gpus))
+    
+    elif args.gpus > len(free_gpus_index_list):
+      print('[WARNING] The number of GPUs (%d) to use exceeds that of available free GPUs. (%d)'
+             % (args.gpus, len(free_gpus_index_list)))
+    
+    sys.exit()
 
   job_id = '%s-mi%d-g%d-r%d-b%d-v%d-l%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
                                             args.mean_interval_ms,
