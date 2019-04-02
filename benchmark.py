@@ -22,7 +22,6 @@ if __name__ == '__main__':
   import os
   import sys
   import time
-  import py3nvml as nvml
   from datetime import datetime as dt
   from torch.multiprocessing import SimpleQueue, Process, Semaphore, Value
 
@@ -48,18 +47,37 @@ if __name__ == '__main__':
                       type=int, default=1)
   args = parser.parse_args()
   print('Args:', args)
-
+  
+  try:
+    import py3nvml
+  except ImportError as error:
+    print('[Warning] py3nvml not installed yet. Will start installing py3nvml.\n')
+    os.system('pip install py3nvml')
+  
+  import py3nvml as nvml
+  from py3nvml.py3nvml import *
+  
+  nvmlInit() 
+  
   free_gpus = nvml.get_free_gpus()
+  
+  for i in range(len(free_gpus)):
+    handle = nvmlDeviceGetHandleByIndex(i) 
+    info = nvmlDeviceGetMemoryInfo(handle)
+    if info.used >> 20 > 0: # occupied GPU
+      free_gpus[i] = False 
+
+  free_gpus_index_list = [i for i,e in enumerate(free_gpus) if e] 
+  
   if args.gpus < 0:
-    sys.exit("Invalid number. The argument requires a positive integer.\nExiting..") 
+    sys.exit('%d is an invalid number of GPUs you can use. The argument requires a positive integer.\nExiting..' % (args.gpus)) 
   
   elif args.gpus > len(free_gpus):
-    sys.exit("The current machine you are using does not have {} GPUs. Please put a smaller number which does not exceed {}. \nExiting...".format(args.gpus, len(free_gpus)))
+    sys.exit('The current machine you are using does not have %d GPUs. Please put a smaller number which does not exceed %d. \nExiting...' % (args.gpus, len(free_gpus)))
   
-  elif args.gpus > len([i for i,e in enumerate(free_gpus) if e ==True]):
-    sys.exit("The number of GPUs you would like to use ({}) exceeds that of avaiable free GPUs ({}).\nExiting... ".format(args.gpus, len(free_gpus)))
-  else:
-    pass 
+  elif args.gpus > len(free_gpus_index_list):
+    sys.exit('The number of GPUs you would like to use (%d) exceeds that of available free GPUs (%d).\nExiting...' % (args.gpus, len(free_gpus_index_list)))
+    
 
   job_id = '%s-mi%d-g%d-r%d-b%d-v%d-l%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
                                             args.mean_interval_ms,
