@@ -91,6 +91,12 @@ def runner(frame_queue,
           time_inference_start_list.append(time_inference_start)
           time_inference_finish_list.append(time_inference_finish)
 
+  # Hot-fix for preventing the loader from getting stuck at frame_queue.put().
+  # Calling get() here has the effect of reminding the underlying Pipe of
+  # frame_queue that the consumers are still alive, and thus unblocks
+  # the producer of the Pipe (the loader, in our case).
+  frame_queue.get()
+
   with fin_bar_value.get_lock():
     fin_bar_value.value += 1
   if fin_bar_value.value == fin_bar_total:
