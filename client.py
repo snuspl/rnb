@@ -65,7 +65,7 @@ def client(filename_queue, beta, num_videos, num_loaders, termination_flag,
     for _ in range(num_loaders):
       filename_queue.put_nowait(None)
   except Full:
-    # if the queue is full, then we don't have to anything because
+    # if the queue is full, then we don't have to do anything because
     # the loaders will not be blocked at queue.get() and eventually exit
     # on their own
     pass

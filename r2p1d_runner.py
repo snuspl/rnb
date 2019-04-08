@@ -96,7 +96,6 @@ def runner(frame_queue,
           time_inference_start_list.append(time_inference_start)
           time_inference_finish_list.append(time_inference_finish)
 
-
   with fin_bar_value.get_lock():
     fin_bar_value.value += 1
   if fin_bar_value.value == fin_bar_total:

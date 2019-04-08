@@ -18,7 +18,7 @@ def loader(filename_queue, frame_queue,
   import torch
   import nvvl
   from r2p1d_sampler import R2P1DSampler
-  from queue import Full, Empty
+  from queue import Full
   from rnb_logging import Termination
 
   # Use our own CUDA stream to avoid synchronizing with other processes
@@ -89,7 +89,7 @@ def loader(filename_queue, frame_queue,
             for _ in range(num_runners):
               frame_queue.put_nowait(None)
           except Full:
-            # if the queue is full, then we don't have to anything because
+            # if the queue is full, then we don't have to do anything because
             # the runners will not be blocked at queue.get() and eventually exit
             # on their own
             pass
