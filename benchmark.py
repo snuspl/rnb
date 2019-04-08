@@ -90,13 +90,13 @@ if __name__ == '__main__':
 
   process_client = Process(target=client,
                            args=(filename_queue, args.mean_interval_ms,
-                                 args.videos, args.loaders, termination_flag,
+                                 args.loaders, termination_flag,
                                  sta_bar_semaphore, sta_bar_value, sta_bar_total,
                                  fin_bar_semaphore, fin_bar_value, fin_bar_total))
 
   process_loader_list = [Process(target=loader,
                                  args=(filename_queue, frame_queue, num_runners, l,
-                                       args.videos, termination_flag,
+                                       termination_flag,
                                        sta_bar_semaphore, sta_bar_value, sta_bar_total,
                                        fin_bar_semaphore, fin_bar_value, fin_bar_total))
                          for l in range(args.loaders)]
