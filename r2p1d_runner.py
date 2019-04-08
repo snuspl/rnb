@@ -1,7 +1,7 @@
 """Runner implementation for the R(2+1)D model.
 """
 def runner(frame_queue,
-           job_id, g_idx, r_idx, counter, num_videos,
+           job_id, g_idx, r_idx, global_inference_counter, num_videos,
            sta_bar_semaphore, sta_bar_value, sta_bar_total,
            fin_bar_semaphore, fin_bar_value, fin_bar_total):
   # PyTorch seems to have an issue with sharing modules between
@@ -76,12 +76,12 @@ def runner(frame_queue,
           stream.synchronize()
           time_inference_finish = time.time()
 
-          with counter.get_lock():
-            if counter.value >= num_videos:
+          with global_inference_counter.get_lock():
+            if global_inference_counter.value >= num_videos:
               # we've already reached our goal; abort immediately
               break
             else:
-              counter.value += 1
+              global_inference_counter.value += 1
 
           # there should be a nicer way to keep all these time measurements...
           time_enqueue_filename_list.append(time_enqueue_filename)

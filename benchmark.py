@@ -73,7 +73,7 @@ if __name__ == '__main__':
 
   # global counter for tracking the total number of videos processed
   # all processes will exit once the counter reaches args.videos
-  counter = Value('i', 0)
+  global_inference_counter = Value('i', 0)
 
   # queue between client and loader
   filename_queue = SimpleQueue()
@@ -82,13 +82,13 @@ if __name__ == '__main__':
 
   process_client = Process(target=client,
                            args=(filename_queue, args.mean_interval_ms,
-                                 args.videos, args.loaders, counter,
+                                 args.videos, args.loaders, global_inference_counter,
                                  sta_bar_semaphore, sta_bar_value, sta_bar_total,
                                  fin_bar_semaphore, fin_bar_value, fin_bar_total))
 
   process_loader_list = [Process(target=loader,
                                  args=(filename_queue, frame_queue, num_runners, l,
-                                       counter, args.videos,
+                                       global_inference_counter, args.videos,
                                        sta_bar_semaphore, sta_bar_value, sta_bar_total,
                                        fin_bar_semaphore, fin_bar_value, fin_bar_total))
                          for l in range(args.loaders)]
@@ -98,7 +98,7 @@ if __name__ == '__main__':
     for r in range(args.replicas_per_gpu):
       process_runner_list.append(Process(target=runner,
                                          args=(frame_queue,
-                                               job_id, g, r, counter, args.videos,
+                                               job_id, g, r, global_inference_counter, args.videos,
                                                sta_bar_semaphore, sta_bar_value, sta_bar_total,
                                                fin_bar_semaphore, fin_bar_value, fin_bar_total)))
 
