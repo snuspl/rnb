@@ -4,7 +4,7 @@ Reads video names from a hard-coded file path and sends them to the filename
 queue, one at a time. The interval time between enqueues is sampled from an
 exponential distribution, to model video inference queries as a Poisson process.
 """
-def client(filename_queue, beta, num_videos, num_loaders, global_inference_counter,
+def client(filename_queue, beta, num_videos, num_loaders, termination_flag,
            sta_bar_semaphore, sta_bar_value, sta_bar_total,
            fin_bar_semaphore, fin_bar_value, fin_bar_total):
   # PyTorch seems to have an issue with sharing modules between
@@ -13,6 +13,8 @@ def client(filename_queue, beta, num_videos, num_loaders, global_inference_count
   import os
   import time
   from numpy.random import exponential
+  from queue import Full
+  from rnb_logging import Termination
 
   # file directory is assumed to be like:
   # root/
@@ -42,25 +44,31 @@ def client(filename_queue, beta, num_videos, num_loaders, global_inference_count
   sta_bar_semaphore.release()
 
   video_idx = 0
-  # Exit the main loop when the counter reaches `num_videos`.
-  # Note that the counter's value will usually be much less than the actual
-  # number of video queries sent to the filename queue, because of the delay
-  # between the client and the runners. Nonetheless, this is not a problem
-  # because all timings after the `num_videos`-th video are discarded anyway.
-  while global_inference_counter.value < num_videos:
+  while termination_flag.value == 0:
     video = videos[video_idx]
     # come back to the front of the list if we're at the end
     video_idx = (video_idx + 1) % len(videos)
 
-    # enqueue filename with the current time
-    filename_queue.put((video, time.time()))
+    try:
+      # enqueue filename with the current time
+      filename_queue.put_nowait((video, time.time()))
+    except Full:
+      print('[WARNING] Filename queue is full. Aborting...')
+      termination_flag.value = Termination.FILENAME_QUEUE_FULL
+      break
     time.sleep(exponential(float(beta) / 1000)) # milliseconds --> seconds
 
   # mark the end of the input stream
   # the loaders should exit by themselves, but we enqueue these markers just in
   # case some loader is waiting on the queue
-  for _ in range(num_loaders):
-    filename_queue.put(None)
+  try:
+    for _ in range(num_loaders):
+      filename_queue.put_nowait(None)
+  except Full:
+    # if the queue is full, then we don't have to anything because
+    # the loaders will not be blocked at queue.get() and eventually exit
+    # on their own
+    pass
 
   with fin_bar_value.get_lock():
     fin_bar_value.value += 1

@@ -14,3 +14,9 @@ def logmeta(job_id):
 def logname(job_id, g_idx, r_idx):
   root = logroot(job_id)
   return '%s/g%d-r%d.txt' % (root, g_idx, r_idx)
+
+
+class Termination:
+  FILENAME_QUEUE_FULL = 1
+  FRAME_QUEUE_FULL = 2
+  TARGET_NUM_VIDEOS_REACHED = 3

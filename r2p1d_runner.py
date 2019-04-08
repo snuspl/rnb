@@ -2,6 +2,7 @@
 """
 def runner(frame_queue,
            job_id, g_idx, r_idx, global_inference_counter, num_videos,
+           termination_flag,
            sta_bar_semaphore, sta_bar_value, sta_bar_total,
            fin_bar_semaphore, fin_bar_value, fin_bar_total):
   # PyTorch seems to have an issue with sharing modules between
@@ -11,7 +12,8 @@ def runner(frame_queue,
   import time
   import torch
   from models.r2p1d.network import R2Plus1DClassifier
-  from rnb_logging import logname
+  from queue import Empty
+  from rnb_logging import logname, Termination
 
   # Use our own CUDA stream to avoid synchronizing with other processes
   with torch.cuda.device(g_idx):
@@ -55,7 +57,7 @@ def runner(frame_queue,
         sta_bar_semaphore.acquire()
         sta_bar_semaphore.release()
 
-        while True:
+        while termination_flag.value == 0:
           tpl = frame_queue.get()
           if tpl is None:
             break
@@ -77,11 +79,14 @@ def runner(frame_queue,
           time_inference_finish = time.time()
 
           with global_inference_counter.get_lock():
-            if global_inference_counter.value >= num_videos:
+            global_inference_counter.value += 1
+
+            if global_inference_counter.value == num_videos:
+              print('Finished processing %d videos' % num_videos)
+              termination_flag.value = Termination.TARGET_NUM_VIDEOS_REACHED
+            elif global_inference_counter.value > num_videos:
               # we've already reached our goal; abort immediately
               break
-            else:
-              global_inference_counter.value += 1
 
           # there should be a nicer way to keep all these time measurements...
           time_enqueue_filename_list.append(time_enqueue_filename)
@@ -91,11 +96,6 @@ def runner(frame_queue,
           time_inference_start_list.append(time_inference_start)
           time_inference_finish_list.append(time_inference_finish)
 
-  # Hot-fix for preventing the loader from getting stuck at frame_queue.put().
-  # Calling get() here has the effect of reminding the underlying Pipe of
-  # frame_queue that the consumers are still alive, and thus unblocks
-  # the producer of the Pipe (the loader, in our case).
-  frame_queue.get()
 
   with fin_bar_value.get_lock():
     fin_bar_value.value += 1
@@ -130,3 +130,15 @@ def runner(frame_queue,
         (np.mean((np.array(time_inference_start_list) - np.array(time_runner_start_list))[NUM_SKIPS:]) * 1000))
     print('Average neural net time: %f ms' % \
         (np.mean((np.array(time_inference_finish_list) - np.array(time_inference_start_list))[NUM_SKIPS:]) * 1000))
+
+    # We've observed cases where the loader processes do not exit until
+    # all tensors spawned from the loaders are removed from scope (even if they
+    # reach the end of the `loader` function).
+    # We clear the frame queue here so loaders can exit successfully.
+    # Note that it doesn't matter if this cleanup takes long, because the
+    # throughput measurement has already been done at the finish barrier above.
+    try:
+      while True:
+        frame_queue.get_nowait()
+    except Empty:
+      pass
