@@ -11,6 +11,54 @@ and runner processes do not necessarily need to be single processes.
 (client) -----------------> (loader) ---------------------> (runner)
                queue                         queue
 """
+def sanity_check(args):
+  #### CHECKING WHETHER ARGS HAVE POSITIVE VALS #### 
+  invalid_argument = []
+  for arg in vars(args).keys():
+    # Expecting all user-given arguments to be positive 
+    if vars(args)[arg] < 0:  
+      invalid_argument.append(arg) 
+  
+  if len(invalid_argument) > 0:
+    for x in invalid_argument:
+      print('[WARNING] Invalid number for %s. (%d) ' % (x, vars(args)[x]))
+    sys.exit(0)
+
+  #### HANDLING GPU ARG #### 
+  # List of integers set for 'CUDA_VISIBLE_DEVICES'
+  # Will return 'ValueError' if any types other than integers are set for this environment variable
+  cuda_env = sorted([int(x) for x in os.environ['CUDA_VISIBLE_DEVICES'].split(',')]) 
+   
+  py3nvml.nvmlInit()
+ 
+  free_gpus = []
+  # Only regard GPU whose memory is not used at all as free 
+  for i in range(py3nvml.nvmlDeviceGetCount()):      
+    handle = py3nvml.nvmlDeviceGetHandleByIndex(i) 
+    info = py3nvml.nvmlDeviceGetMemoryInfo(handle)
+    # info.used returns the consumed GPU memory usage in bits
+    if info.used > 0:              
+      free_gpus.append(False)            
+    else: free_gpus.append(True)
+
+  # Find the indices of free GPUs 
+  free_gpus_indices = [i for i,e in enumerate(free_gpus) if e] 
+    
+  if args.gpus > len(cuda_env): 
+    print('[WARNING] Exceeds the number of available GPUs. (%d / %d)' % (args.gpus, len(cuda_env)))
+    sys.exit(0)
+  else: #args.gpus <= len(cuda_env)
+    cnt = 0 
+    for x in cuda_env: 
+      if x in free_gpus_indices: cnt += 1 
+    if cnt < args.gpus:
+      print("CNT: ", cnt)
+      print('[WARNING] Not enough free GPUs. Need to free %d more GPU(s).' % (args.gpus - cnt)) 
+      sys.exit(0)
+  
+  py3nvml.nvmlShutdown()
+  
+
 if __name__ == '__main__':
   # placing these imports before the if statement results in a
   # "context has already been set" RuntimeError
@@ -22,8 +70,8 @@ if __name__ == '__main__':
   import os
   import sys
   import time
-  import py3nvml as nvml
-  from py3nvml.py3nvml import *
+  import torch
+  from py3nvml import *
   from datetime import datetime as dt
   from torch.multiprocessing import SimpleQueue, Process, Semaphore, Value
 
@@ -50,43 +98,7 @@ if __name__ == '__main__':
   args = parser.parse_args()
   print('Args:', args)
   
-  free_gpus = nvml.get_free_gpus() 
-  # return(list of Booleans): [True, True, True, True, True, False]
-  # In this case, GPU #5 has a process running, thus returning False.
-  # GPUs without any process running, but consuming 10MB of memory does not return False yet. 
-  
-  nvmlInit()
-
-  # Handling almost-free-GPUs as occupied   
-  for i in range(len(free_gpus)):      
-    handle = nvmlDeviceGetHandleByIndex(i) 
-    info = nvmlDeviceGetMemoryInfo(handle)
-    if info.used > 0:              
-      # info.used returns the consumed GPU memory usage in bits
-      # We will only regard GPU whose memory is not used at all as free, and the rest as occupied  
-      free_gpus[i] = False            
-
-  # Find the indices of free GPUs 
-  free_gpus_index_list = [i for i,e in enumerate(free_gpus) if e] 
-  
-  invalid_argument = []
-  for arg in vars(args).keys():
-    # Expect all user-given argument to be positive. 
-    if vars(args)[arg] < 0:  
-      invalid_argument.append(arg) 
-  
-  if len(invalid_argument) > 0:
-    for x in invalid_argument:
-      print('[WARNING] Invalid number for %s. (%d) ' % (x, vars(args)[x]))
-    
-    if args.gpus > len(free_gpus):
-      print('[WARNING] The current machine does not have %d GPUs.' % (args.gpus))
-    
-    elif args.gpus > len(free_gpus_index_list):
-      print('[WARNING] The number of GPUs (%d) to use exceeds that of available free GPUs. (%d)'
-             % (args.gpus, len(free_gpus_index_list)))
-    
-    sys.exit('Exiting...')
+  sanity_check(args)
 
   job_id = '%s-mi%d-g%d-r%d-b%d-v%d-l%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
                                             args.mean_interval_ms,
