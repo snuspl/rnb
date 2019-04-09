@@ -29,7 +29,7 @@ def sanity_check(args):
   """
   import os
   import sys
-  from py3nvml import *
+  from py3nvml import py3nvml
 
   # Case 1: Check whether arguments are positive integers 
   invalid_argument = []
