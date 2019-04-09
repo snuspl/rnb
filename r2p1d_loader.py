@@ -19,7 +19,7 @@ def loader(filename_queue, frame_queue,
   import nvvl
   from r2p1d_sampler import R2P1DSampler
   from queue import Full
-  from rnb_logging import Termination
+  from control import TerminationFlag
 
   # Use our own CUDA stream to avoid synchronizing with other processes
   with torch.cuda.device(idx):
@@ -51,7 +51,7 @@ def loader(filename_queue, frame_queue,
         sta_bar_semaphore.acquire()
         sta_bar_semaphore.release()
 
-        while termination_flag.value == 0:
+        while termination_flag.value == TerminationFlag.UNSET:
           tpl = filename_queue.get()
           if tpl is None:
             # apparently, the client has already aborted so we abort too
@@ -77,7 +77,7 @@ def loader(filename_queue, frame_queue,
                                     time.time()))
           except Full:
             print('[WARNING] Frame queue is full. Aborting...')
-            termination_flag.value = Termination.FRAME_QUEUE_FULL
+            termination_flag.value = TerminationFlag.FRAME_QUEUE_FULL
             break
 
 

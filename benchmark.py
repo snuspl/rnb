@@ -26,7 +26,8 @@ if __name__ == '__main__':
   from torch.multiprocessing import Queue, Process, Semaphore, Value
 
   # change these if you want to use different client/loader/runner impls
-  from rnb_logging import logmeta, Termination
+  from rnb_logging import logmeta
+  from control import TerminationFlag
   from client import client
   from r2p1d_loader import loader
   from r2p1d_runner import runner
@@ -81,7 +82,7 @@ if __name__ == '__main__':
 
   # global integer flag for checking job termination
   # any process can alter this value to broadcast a termination signal
-  termination_flag = Value('i', 0)
+  termination_flag = Value('i', TerminationFlag.UNSET)
 
   # queue between client and loader
   filename_queue = Queue(args.queue_size)

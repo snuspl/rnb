@@ -13,7 +13,8 @@ def runner(frame_queue,
   import torch
   from models.r2p1d.network import R2Plus1DClassifier
   from queue import Empty
-  from rnb_logging import logname, Termination
+  from rnb_logging import logname
+  from control import TerminationFlag
 
   # Use our own CUDA stream to avoid synchronizing with other processes
   with torch.cuda.device(g_idx):
@@ -57,7 +58,7 @@ def runner(frame_queue,
         sta_bar_semaphore.acquire()
         sta_bar_semaphore.release()
 
-        while termination_flag.value == 0:
+        while termination_flag.value == TerminationFlag.UNSET:
           tpl = frame_queue.get()
           if tpl is None:
             break
@@ -83,7 +84,7 @@ def runner(frame_queue,
 
             if global_inference_counter.value == num_videos:
               print('Finished processing %d videos' % num_videos)
-              termination_flag.value = Termination.TARGET_NUM_VIDEOS_REACHED
+              termination_flag.value = TerminationFlag.TARGET_NUM_VIDEOS_REACHED
             elif global_inference_counter.value > num_videos:
               # we've already reached our goal; abort immediately
               break

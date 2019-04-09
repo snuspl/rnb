@@ -14,7 +14,7 @@ def client(filename_queue, beta, num_loaders, termination_flag,
   import time
   from numpy.random import exponential
   from queue import Full
-  from rnb_logging import Termination
+  from control import TerminationFlag
 
   # file directory is assumed to be like:
   # root/
@@ -44,7 +44,7 @@ def client(filename_queue, beta, num_loaders, termination_flag,
   sta_bar_semaphore.release()
 
   video_idx = 0
-  while termination_flag.value == 0:
+  while termination_flag.value == TerminationFlag.UNSET:
     video = videos[video_idx]
     # come back to the front of the list if we're at the end
     video_idx = (video_idx + 1) % len(videos)
@@ -54,7 +54,7 @@ def client(filename_queue, beta, num_loaders, termination_flag,
       filename_queue.put_nowait((video, time.time()))
     except Full:
       print('[WARNING] Filename queue is full. Aborting...')
-      termination_flag.value = Termination.FILENAME_QUEUE_FULL
+      termination_flag.value = TerminationFlag.FILENAME_QUEUE_FULL
       break
     time.sleep(exponential(float(beta) / 1000)) # milliseconds --> seconds
 
