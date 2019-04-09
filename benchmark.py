@@ -27,6 +27,10 @@ def sanity_check(args):
      and prevent users from using it. If user requires more GPUs than the number of GPUs that are 
      both accessible and free, the program will also terminate. 
   """
+  import os
+  import sys
+  from py3nvml import *
+
   # Case 1: Check whether arguments are positive integers 
   invalid_argument = []
   for arg in vars(args).keys():
@@ -68,11 +72,7 @@ if __name__ == '__main__':
   mp.set_start_method('spawn')
 
   import argparse
-  import os
-  import sys
   import time
-  import torch
-  from py3nvml import *
   from datetime import datetime as dt
   from torch.multiprocessing import SimpleQueue, Process, Semaphore, Value
 
