@@ -23,10 +23,11 @@ if __name__ == '__main__':
   import sys
   import time
   from datetime import datetime as dt
-  from torch.multiprocessing import SimpleQueue, Process, Semaphore, Value
+  from torch.multiprocessing import Queue, Process, Semaphore, Value
 
   # change these if you want to use different client/loader/runner impls
   from rnb_logging import logmeta
+  from control import TerminationFlag
   from client import client
   from r2p1d_loader import loader
   from r2p1d_runner import runner
@@ -45,16 +46,20 @@ if __name__ == '__main__':
                       type=int, default=2000)
   parser.add_argument('-l', '--loaders', help='Number of loader processes to spawn',
                       type=int, default=1)
+  parser.add_argument('-qs', '--queue_size',
+                      help='Maximum queue size for inter-process queues',
+                      type=int, default=500)
   args = parser.parse_args()
   print('Args:', args)
 
-  job_id = '%s-mi%d-g%d-r%d-b%d-v%d-l%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
-                                            args.mean_interval_ms,
-                                            args.gpus,
-                                            args.replicas_per_gpu,
-                                            args.batch_size,
-                                            args.videos,
-                                            args.loaders)
+  job_id = '%s-mi%d-g%d-r%d-b%d-v%d-l%d-qs%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
+                                                 args.mean_interval_ms,
+                                                 args.gpus,
+                                                 args.replicas_per_gpu,
+                                                 args.batch_size,
+                                                 args.videos,
+                                                 args.loaders,
+                                                 args.queue_size)
 
   # assume homogeneous placement of runners
   # in case of a heterogeneous placement, this needs to be changed accordingly
@@ -71,19 +76,28 @@ if __name__ == '__main__':
   fin_bar_value = Value('i', 0)
   fin_bar_total = num_runners + args.loaders + 2
 
+  # global counter for tracking the total number of videos processed
+  # all processes will exit once the counter reaches args.videos
+  global_inference_counter = Value('i', 0)
+
+  # global integer flag for checking job termination
+  # any process can alter this value to broadcast a termination signal
+  termination_flag = Value('i', TerminationFlag.UNSET)
+
   # queue between client and loader
-  filename_queue = SimpleQueue()
+  filename_queue = Queue(args.queue_size)
   # queue between loader and runner
-  frame_queue = SimpleQueue()
+  frame_queue = Queue(args.queue_size)
 
   process_client = Process(target=client,
                            args=(filename_queue, args.mean_interval_ms,
-                                 args.videos, args.loaders,
+                                 args.loaders, termination_flag,
                                  sta_bar_semaphore, sta_bar_value, sta_bar_total,
                                  fin_bar_semaphore, fin_bar_value, fin_bar_total))
 
   process_loader_list = [Process(target=loader,
                                  args=(filename_queue, frame_queue, num_runners, l,
+                                       termination_flag,
                                        sta_bar_semaphore, sta_bar_value, sta_bar_total,
                                        fin_bar_semaphore, fin_bar_value, fin_bar_total))
                          for l in range(args.loaders)]
@@ -93,7 +107,8 @@ if __name__ == '__main__':
     for r in range(args.replicas_per_gpu):
       process_runner_list.append(Process(target=runner,
                                          args=(frame_queue,
-                                               job_id, g, r,
+                                               job_id, g, r, global_inference_counter, args.videos,
+                                               termination_flag,
                                                sta_bar_semaphore, sta_bar_value, sta_bar_total,
                                                fin_bar_semaphore, fin_bar_value, fin_bar_total)))
 
@@ -135,4 +150,5 @@ if __name__ == '__main__':
 
   with open(logmeta(job_id), 'w') as f:
     f.write('Args: %s\n' % str(args))
-    f.write('%f %f' % (time_start, time_end))
+    f.write('%f %f\n' % (time_start, time_end))
+    f.write('Termination flag: %d\n' % termination_flag.value)

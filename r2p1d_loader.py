@@ -8,7 +8,7 @@ The frames are downsampled (default: 112x112) and sent to the frame queue, as
 tensors of shape (num_clips, 3, consecutive_frames, width, height).
 """
 def loader(filename_queue, frame_queue,
-           num_runners, idx,
+           num_runners, idx, termination_flag,
            sta_bar_semaphore, sta_bar_value, sta_bar_total,
            fin_bar_semaphore, fin_bar_value, fin_bar_total):
   # PyTorch seems to have an issue with sharing modules between
@@ -18,6 +18,8 @@ def loader(filename_queue, frame_queue,
   import torch
   import nvvl
   from r2p1d_sampler import R2P1DSampler
+  from queue import Full
+  from control import TerminationFlag
 
   # Use our own CUDA stream to avoid synchronizing with other processes
   with torch.cuda.device(idx):
@@ -49,9 +51,10 @@ def loader(filename_queue, frame_queue,
         sta_bar_semaphore.acquire()
         sta_bar_semaphore.release()
 
-        while True:
+        while termination_flag.value == TerminationFlag.UNSET:
           tpl = filename_queue.get()
           if tpl is None:
+            # apparently, the client has already aborted so we abort too
             break
 
           time_loader_start = time.time()
@@ -66,16 +69,30 @@ def loader(filename_queue, frame_queue,
           # close the file since we're done with it
           loader.flush()
 
-          # enqueue frames with past and current timestamps
-          frame_queue.put((frames,
-                           time_enqueue_filename,
-                           time_loader_start,
-                           time.time()))
+          try:
+            # enqueue frames with past and current timestamps
+            frame_queue.put_nowait((frames,
+                                    time_enqueue_filename,
+                                    time_loader_start,
+                                    time.time()))
+          except Full:
+            print('[WARNING] Frame queue is full. Aborting...')
+            termination_flag.value = TerminationFlag.FRAME_QUEUE_FULL
+            break
+
 
         # mark the end of the input stream
+        # the runners should exit by themselves, but we enqueue these markers
+        # just in case some runner is waiting on the queue
         if idx == 0:
-          for _ in range(num_runners):
-            frame_queue.put(None)
+          try:
+            for _ in range(num_runners):
+              frame_queue.put_nowait(None)
+          except Full:
+            # if the queue is full, then we don't have to do anything because
+            # the runners will not be blocked at queue.get() and eventually exit
+            # on their own
+            pass
 
         loader.close()
 
