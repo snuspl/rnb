@@ -11,12 +11,29 @@ and runner processes do not necessarily need to be single processes.
 (client) -----------------> (loader) ---------------------> (runner)
                queue                         queue
 """
+
 def sanity_check(args):
-  #### CHECKING WHETHER ARGS HAVE POSITIVE VALS #### 
+  """Validate the given user arguments. 
+
+  The function 'sanity_check' checks the arguments and terminates when an invalid state is observed. 
+
+  The program will terminate in the following situations:
+  1) The current benchmark expects arguments to be positive integers, thus any argument 
+     less than 1 will be considered invalid and lead the program to terminate.  
+  2) The values given for environment variable 'CUDA_VISIBLE_DEVICES' will be checked
+     to see if valid argument is given, and the program will terminate if not so. 
+  
+  Here, we will regard GPUs with no process running along with no consumption in memory as 'free'. 
+  If a GPU has no process running, but is consuming some memory, we will regard the GPU as 'not-free', 
+  and prevent users from using it. 
+  
+  3) If user requires more GPUs than the number of GPUs that are both accessible and free,
+     the program will also terminate. 
+  """
+  # Case 1: Check whether arguments are positive integers 
   invalid_argument = []
   for arg in vars(args).keys():
-    # Expecting all user-given arguments to be positive 
-    if vars(args)[arg] < 0:  
+    if vars(args)[arg] < 1:  
       invalid_argument.append(arg) 
   
   if len(invalid_argument) > 0:
@@ -24,15 +41,13 @@ def sanity_check(args):
       print('[WARNING] Invalid number for %s. (%d) ' % (x, vars(args)[x]))
     sys.exit(0)
 
-  #### HANDLING GPU ARG #### 
-  # List of integers set for 'CUDA_VISIBLE_DEVICES'
-  # Will return 'ValueError' if any types other than integers are set for this environment variable
-  cuda_env = sorted([int(x) for x in os.environ['CUDA_VISIBLE_DEVICES'].split(',')]) 
+  # Case 2: Return 'ValueError' if any types other than integers are set for this environment variable
+  visible_gpu_idx = sorted([int(x) for x in os.environ['CUDA_VISIBLE_DEVICES'].split(',')]) 
    
   py3nvml.nvmlInit()
  
   free_gpus = []
-  # Only regard GPU whose memory is not used at all as free 
+  # Find free GPUs
   for i in range(py3nvml.nvmlDeviceGetCount()):      
     handle = py3nvml.nvmlDeviceGetHandleByIndex(i) 
     info = py3nvml.nvmlDeviceGetMemoryInfo(handle)
@@ -42,23 +57,18 @@ def sanity_check(args):
     else: free_gpus.append(True)
 
   # Find the indices of free GPUs 
-  free_gpus_indices = [i for i,e in enumerate(free_gpus) if e] 
-    
-  if args.gpus > len(cuda_env): 
-    print('[WARNING] Exceeds the number of available GPUs. (%d / %d)' % (args.gpus, len(cuda_env)))
-    sys.exit(0)
-  else: #args.gpus <= len(cuda_env)
-    cnt = 0 
-    for x in cuda_env: 
-      if x in free_gpus_indices: cnt += 1 
-    if cnt < args.gpus:
-      print("CNT: ", cnt)
-      print('[WARNING] Not enough free GPUs. Need to free %d more GPU(s).' % (args.gpus - cnt)) 
-      sys.exit(0)
+  free_gpu_idx = [i for i,e in enumerate(free_gpus) if e] 
+  # Ultimate list of indices of GPUs that user can use (Both free and visible) 
+  ultimate_gpu_idx = [idx for idx in visible_gpu_idx if idx in free_gpu_idx]
+
+  if args.gpus > len(ultimate_gpu_idx):
+    print('[WARNING] Exceeds the number of available GPUs. (%d)' % (args.gpus))
+    print('The following GPUs are visible: ', visible_gpu_idx)
+    print('Out of (%d) visible GPUs, the following (%d) GPU(s) is(are) free and can be used: [%s]' % (len(visible_gpu_idx), len(ultimate_gpu_idx), ', '.join(map(str, ultimate_gpu_idx))))
+    sys.exit()
   
   py3nvml.nvmlShutdown()
   
-
 if __name__ == '__main__':
   # placing these imports before the if statement results in a
   # "context has already been set" RuntimeError
