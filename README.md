@@ -74,7 +74,7 @@ Before moving onto some methods implemented inside **RnBLoader** in `rnb_loader.
 
 ```python
 # Note that this file is from "https://github.com/jsjason/nvvl/"
-# https://github.com/jsjason/nvvl/pytorch/nvvl/rnb_loader.py
+# https://github.com/jsjason/nvvl/blob/master/pytorch/nvvl/rnb_loader.py
 
 from .rnb_dataset import RnBDataset 
 
