@@ -8,11 +8,11 @@ Thus this test benchmark serves as the testing ground for experiment with variou
 ![Benchmark Test Pipeline Image](/images/benchmark_test.png)
 
 The figure above delineates the end-to-end pipeline of the test benchmark. 
-As you can see from the figure above, there exist three kinds of processes in total: client, loader and runner. In this test benchmark, three processes are spawned by default, meaning one for each task(step). The number of processes for each step, however, can be modified, and the analysis on the tests with different number of processes, batches, replications and GPUs will be explored to find the ultimate optimal configuration. 
+As you can see from the figure above, there exist three kinds of processes in total: `client`, `loader` and `runner`. In this test benchmark, three processes are spawned by default, meaning one for each task (step). The number of processes for each step, however, can be modified, and the analysis on the tests with different number of processes, batches, replications and GPUs will be explored to find the ultimate optimal configuration. 
 
 In order to concurrently execute multiple processes at the same time, two queues exist and let items pass across processes.  
-  - `filename_queue`: This queue will pass each path of videos from `client` process to `r2p1d_loader` process.   
-  - `frame_queue`: This queue will pass a batched tensor of a single video from `r2p1d_loader` process to `r2p1d_runner` process. 
+  - `filename_queue`: This queue will pass each path of videos from `client` process to `loader` process.   
+  - `frame_queue`: This queue will pass a batched tensor of a single video from `loader` process to `runner` process. 
 
 ## Files Description
 Descriptions on each files are given to introduce you how this test benchmark performs.
@@ -38,7 +38,7 @@ This file serves as the main process that spawns all other processes. We aim to 
 This file first prepares a list of video filepaths. If the length of the list is smaller than the number of videos you have given for `-v`, the list will be repeated sufficient number of times until the number of videos that will be tested matches with the given parameter. After the list of filepaths is ready, one filepath will be sent to the `filename_queue` in every interval sampled from Poisson distribution, where the mean interval is given as the argument for `-mi`.
 
 - `r2p1d_sampler.py`
-Before we move onto the next step, **extracting features of frames and loading them on GPUs**, we need to **sample** the frames first. Thus, it is important to understand the role of **sampler**. The sampler class will choose indices of frames to read based on the number of clips and the number of frames per clip. Following the implementation described in R(2+1)D paper, we will sample 10 clips in which one clip consists of 8 frames.    
+Before we move onto the next step, **extracting features of frames and loading them on GPUs**, we need to **sample** the frames first. Thus, it is important to understand the role of **sampler**. The sampler class will choose indices of frames to read based on the number of clips and the number of frames per clip. Following the implementation described in the R(2+1)D paper, we will sample 10 clips in which one clip consists of 8 frames.    
 
 - `r2p1d_loader.py`
 This file will extract features of sampled clips with a certain number of frames. This extraction process uses NVVL, and the details regarding NVVL will be further described below. The extracted features will be put in to `frame_queue`.  
