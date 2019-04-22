@@ -34,6 +34,10 @@ def sanity_check(args):
   # Case 1: Check whether arguments are positive integers 
   invalid_argument = []
   for arg in vars(args).keys():
+    if isinstance(vars(args)[arg], str):
+      # the check below is invalid for strings
+      continue
+
     if vars(args)[arg] < 1:  
       invalid_argument.append(arg) 
   
@@ -81,7 +85,7 @@ if __name__ == '__main__':
   from control import TerminationFlag
   from client import client
   from r2p1d_loader import loader
-  from r2p1d_runner import runner
+  from runner import runner
 
   parser = argparse.ArgumentParser()
   parser.add_argument('-mi', '--mean_interval_ms',
@@ -100,6 +104,9 @@ if __name__ == '__main__':
   parser.add_argument('-qs', '--queue_size',
                       help='Maximum queue size for inter-process queues',
                       type=int, default=500)
+  parser.add_argument('-m', '--model',
+                      help='Full module path to the model impl to run',
+                      type=str, default='models.r2p1d.model.R2P1D')
   args = parser.parse_args()
   print('Args:', args)
   
@@ -163,7 +170,8 @@ if __name__ == '__main__':
                                                job_id, g, r, global_inference_counter, args.videos,
                                                termination_flag,
                                                sta_bar_semaphore, sta_bar_value, sta_bar_total,
-                                               fin_bar_semaphore, fin_bar_value, fin_bar_total)))
+                                               fin_bar_semaphore, fin_bar_value, fin_bar_total,
+                                               args.model)))
 
 
   for p in [process_client] + process_loader_list + process_runner_list:

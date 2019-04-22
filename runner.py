@@ -1,17 +1,17 @@
-"""Runner implementation for the R(2+1)D model.
+"""Runner implementation for executing neural networks on the RnB benchmark.
 """
 def runner(frame_queue,
            job_id, g_idx, r_idx, global_inference_counter, num_videos,
            termination_flag,
            sta_bar_semaphore, sta_bar_value, sta_bar_total,
-           fin_bar_semaphore, fin_bar_value, fin_bar_total):
+           fin_bar_semaphore, fin_bar_value, fin_bar_total,
+           model_module_path):
   # PyTorch seems to have an issue with sharing modules between
   # multiple processes, so we just do the imports here and
   # not at the top of the file
   import numpy as np
   import time
   import torch
-  from models.r2p1d.network import R2Plus1DClassifier
   from queue import Empty
   from rnb_logging import logname
   from control import TerminationFlag
@@ -30,14 +30,18 @@ def runner(frame_queue,
         # TODO #2: Update PyTorch version
         insurance = torch.randn(1, device=torch.device('cuda:0'))
 
-        model = R2Plus1DClassifier(num_classes=400,
-                                   layer_sizes=[2,2,2,2]).to(device)
-        ckpt = torch.load('/cmsdata/ssd0/cmslab/Kinetics-400/ckpt/model_data.pth.tar',
-                          map_location=device)
-        model.load_state_dict(ckpt['state_dict'])
+        # load model instance using the given module path
+        delimiter_idx = model_module_path.rfind('.')
+        module_path = model_module_path[:delimiter_idx]
+        model_name = model_module_path[delimiter_idx+1:]
+        module = __import__(module_path, fromlist=(model_name))
+        model_class = getattr(module, model_name)
+
+        model = model_class(device)
+        input_shape = model.input_shape()
 
         # first "warm up" the model with a few sample inferences
-        tmp = torch.randn(10, 3, 8, 112, 112, dtype=torch.float32).cuda()
+        tmp = torch.randn(*input_shape, dtype=torch.float32).cuda()
         for _ in range(3):
           _ = model(tmp)
           stream.synchronize()
