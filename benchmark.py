@@ -105,8 +105,8 @@ if __name__ == '__main__':
                       help='Maximum queue size for inter-process queues',
                       type=int, default=500)
   parser.add_argument('-m', '--model',
-                      help='Full module path to the model impl to run',
-                      type=str, default='models.r2p1d.model.R2P1D')
+                      help='Full module path (including class name) to the model impl to run',
+                      type=str, default='models.r2p1d.model.R2P1DRunner')
   args = parser.parse_args()
   print('Args:', args)
   
