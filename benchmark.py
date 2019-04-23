@@ -18,11 +18,9 @@ def sanity_check(args):
   The function 'sanity_check' checks the arguments and terminates when an invalid state is observed. 
 
   The program will terminate in the following situations:
-  1) The current benchmark expects arguments to be positive integers, thus any argument 
-     less than 1 will be considered invalid and lead the program to terminate.  
-  2) The values given for environment variable 'CUDA_VISIBLE_DEVICES' will be checked
+  1) The values given for environment variable 'CUDA_VISIBLE_DEVICES' will be checked
      to see if valid argument is given, and the program will terminate if not so. 
-  3) Here, we will regard GPUs with no process running along with no consumption in memory as 'free'. 
+  2) Here, we will regard GPUs with no process running along with no consumption in memory as 'free'. 
      If a GPU has no process running, but is consuming some memory, we will regard the GPU as 'not-free', 
      and prevent users from using it. If user requires more GPUs than the number of GPUs that are 
      both accessible and free, the program will also terminate. 
@@ -31,25 +29,10 @@ def sanity_check(args):
   import sys
   from py3nvml import py3nvml
 
-  # Case 1: Check whether arguments are positive integers 
-  invalid_argument = []
-  for arg in vars(args).keys():
-    if isinstance(vars(args)[arg], str):
-      # the check below is invalid for strings
-      continue
-
-    if vars(args)[arg] < 1:  
-      invalid_argument.append(arg) 
-  
-  if len(invalid_argument) > 0:
-    for x in invalid_argument:
-      print('[WARNING] Invalid number for %s. (%d) ' % (x, vars(args)[x]))
-    sys.exit()
-
-  # Case 2: Return 'ValueError' if any types other than integers are set for this environment variable
+  # Case 1: Return 'ValueError' if any types other than integers are set for this environment variable
   visible_gpu_idx = sorted([int(x) for x in os.environ['CUDA_VISIBLE_DEVICES'].split(',')]) 
    
-  # Case 3: Check whether user requires more GPUs than the number of GPUs that are both accessible and free
+  # Case 2: Check whether user requires more GPUs than the number of GPUs that are both accessible and free
   py3nvml.nvmlInit()
  
   # Find the indices of GPUs that are both free and visible
@@ -77,6 +60,7 @@ if __name__ == '__main__':
 
   import argparse
   import time
+  from arg_utils import *
   from datetime import datetime as dt
   from torch.multiprocessing import Queue, Process, Semaphore, Value
 
@@ -90,20 +74,20 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('-mi', '--mean_interval_ms',
                       help='Mean event interval time (Poisson), milliseconds',
-                      type=int, default=100)
+                      type=nonnegative_int, default=100)
   parser.add_argument('-g', '--gpus', help='Number of GPUs to use',
-                      type=int, default=1)
+                      type=positive_int, default=1)
   parser.add_argument('-r', '--replicas_per_gpu',
-                      help='Number of replicas per GPU', type=int, default=1)
+                      help='Number of replicas per GPU', type=positive_int, default=1)
   parser.add_argument('-b', '--batch_size', help='Video batch size per replica',
-                      type=int, default=1)
+                      type=positive_int, default=1)
   parser.add_argument('-v', '--videos', help='Total number of videos to run',
-                      type=int, default=2000)
+                      type=positive_int, default=2000)
   parser.add_argument('-l', '--loaders', help='Number of loader processes to spawn',
-                      type=int, default=1)
+                      type=positive_int, default=1)
   parser.add_argument('-qs', '--queue_size',
                       help='Maximum queue size for inter-process queues',
-                      type=int, default=500)
+                      type=positive_int, default=500)
   parser.add_argument('-m', '--model',
                       help='Full module path (including class name) to the model impl to run',
                       type=str, default='models.r2p1d.model.R2P1DRunner')
