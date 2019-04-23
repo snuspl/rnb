@@ -14,7 +14,6 @@ def loader(filename_queue, frame_queue,
   # PyTorch seems to have an issue with sharing modules between
   # multiple processes, so we just do the imports here and
   # not at the top of the file
-  import time
   import torch
   import nvvl
   from r2p1d_sampler import R2P1DSampler
@@ -57,8 +56,8 @@ def loader(filename_queue, frame_queue,
             # apparently, the client has already aborted so we abort too
             break
 
-          time_loader_start = time.time()
-          filename, time_enqueue_filename = tpl
+          filename, time_card = tpl
+          time_card.record('loader_start')
 
           loader.loadfile(filename)
           # we only load one file, so loader.__iter__ returns only one item
@@ -69,12 +68,9 @@ def loader(filename_queue, frame_queue,
           # close the file since we're done with it
           loader.flush()
 
+          time_card.record('enqueue_frames')
           try:
-            # enqueue frames with past and current timestamps
-            frame_queue.put_nowait((frames,
-                                    time_enqueue_filename,
-                                    time_loader_start,
-                                    time.time()))
+            frame_queue.put_nowait((frames, time_card))
           except Full:
             print('[WARNING] Frame queue is full. Aborting...')
             termination_flag.value = TerminationFlag.FRAME_QUEUE_FULL

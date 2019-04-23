@@ -10,10 +10,9 @@ def runner(frame_queue,
   # multiple processes, so we just do the imports here and
   # not at the top of the file
   import numpy as np
-  import time
   import torch
   from queue import Empty
-  from rnb_logging import logname
+  from rnb_logging import logname, TimeCardSummary
   from control import TerminationFlag
 
   # Use our own CUDA stream to avoid synchronizing with other processes
@@ -48,12 +47,8 @@ def runner(frame_queue,
         del tmp
 
 
-        time_enqueue_filename_list = []
-        time_loader_start_list = []
-        time_enqueue_frame_list = []
-        time_runner_start_list = []
-        time_inference_start_list = []
-        time_inference_finish_list = []
+        # collect incoming time measurements for later logging
+        time_card_summary = TimeCardSummary()
 
         with sta_bar_value.get_lock():
           sta_bar_value.value += 1
@@ -67,12 +62,12 @@ def runner(frame_queue,
           if tpl is None:
             break
 
-          time_runner_start = time.time()
-          video, time_enqueue_filename, time_loader_start, time_enqueue_frames = tpl
+          video, time_card = tpl
+          time_card.record('runner_start')
 
           if video.device != device:
             video = video.to(device=device)
-          time_inference_start = time.time()
+          time_card.record('inference_start')
 
           video = video.float()
           # (num_clips, 3, consecutive_frames, width, height)
@@ -81,7 +76,7 @@ def runner(frame_queue,
 
           outputs = model(video)
           stream.synchronize()
-          time_inference_finish = time.time()
+          time_card.record('inference_finish')
 
           with global_inference_counter.get_lock():
             global_inference_counter.value += 1
@@ -93,13 +88,7 @@ def runner(frame_queue,
               # we've already reached our goal; abort immediately
               break
 
-          # there should be a nicer way to keep all these time measurements...
-          time_enqueue_filename_list.append(time_enqueue_filename)
-          time_loader_start_list.append(time_loader_start)
-          time_enqueue_frame_list.append(time_enqueue_frames)
-          time_runner_start_list.append(time_runner_start)
-          time_inference_start_list.append(time_inference_start)
-          time_inference_finish_list.append(time_inference_finish)
+          time_card_summary.register(time_card)
 
   with fin_bar_value.get_lock():
     fin_bar_value.value += 1
@@ -111,29 +100,13 @@ def runner(frame_queue,
   # write statistics AFTER the barrier so that
   # throughput is not affected by unnecessary file I/O
   with open(logname(job_id, g_idx, r_idx), 'w') as f:
-    f.write(' '.join(['enqueue_filename', 'loader_start', 'enqueue_frames',
-                      'runner_start', 'inference_start', 'inference_finish']))
-    f.write('\n')
-    for tpl in zip(time_enqueue_filename_list, time_loader_start_list,
-                   time_enqueue_frame_list, time_runner_start_list,
-                   time_inference_start_list, time_inference_finish_list):
-      f.write(' '.join(map(str, tpl)))
-      f.write('\n')
+    time_card_summary.full_report(f)
 
   # quick summary of the statistics gathered
   # we skip the first few inferences for stable results
   NUM_SKIPS = 10
   if g_idx == 0 and r_idx == 0:
-    print('Average filename queue wait time: %f ms' % \
-        (np.mean((np.array(time_loader_start_list) - np.array(time_enqueue_filename_list))[NUM_SKIPS:]) * 1000))
-    print('Average frame extraction time: %f ms' % \
-        (np.mean((np.array(time_enqueue_frame_list) - np.array(time_loader_start_list))[NUM_SKIPS:]) * 1000))
-    print('Average frame queue wait time: %f ms' % \
-        (np.mean((np.array(time_runner_start_list) - np.array(time_enqueue_frame_list))[NUM_SKIPS:]) * 1000))
-    print('Average inter-GPU frames transmission time: %f ms' % \
-        (np.mean((np.array(time_inference_start_list) - np.array(time_runner_start_list))[NUM_SKIPS:]) * 1000))
-    print('Average neural net time: %f ms' % \
-        (np.mean((np.array(time_inference_finish_list) - np.array(time_inference_start_list))[NUM_SKIPS:]) * 1000))
+    time_card_summary.summarize(NUM_SKIPS)
 
     # We've observed cases where the loader processes do not exit until
     # all tensors spawned from the loaders are removed from scope (even if they
