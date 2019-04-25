@@ -15,6 +15,7 @@ def client(filename_queue, beta, num_loaders, termination_flag,
   from numpy.random import exponential
   from queue import Full
   from control import TerminationFlag
+  from rnb_logging import TimeCard
 
   # file directory is assumed to be like:
   # root/
@@ -49,9 +50,12 @@ def client(filename_queue, beta, num_loaders, termination_flag,
     # come back to the front of the list if we're at the end
     video_idx = (video_idx + 1) % len(videos)
 
+    # create TimeCard instance to measure the time of key events
+    time_card = TimeCard()
+    time_card.record('enqueue_filename')
+
     try:
-      # enqueue filename with the current time
-      filename_queue.put_nowait((video, time.time()))
+      filename_queue.put_nowait((video, time_card))
     except Full:
       print('[WARNING] Filename queue is full. Aborting...')
       termination_flag.value = TerminationFlag.FILENAME_QUEUE_FULL
