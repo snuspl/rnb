@@ -53,7 +53,7 @@ class TimeCardSummary:
       self.summary[key].append(ts)
 
 
-  def summarize(self, num_skips):
+  def print_summary(self, num_skips):
     """Prints a quick summary on the elapsed time between events, to stdout.
 
     The parameter `num_skips` can be used to indicate the number of instances
@@ -66,7 +66,7 @@ class TimeCardSummary:
       print('Average time between %s and %s: %f ms' % (prv, nxt, elapsed_time))
 
 
-  def full_report(self, fp):
+  def save_full_report(self, fp):
     """Logs all collected timings to the given file pointer."""
     fp.write(' '.join(self.keys))
     fp.write('\n')

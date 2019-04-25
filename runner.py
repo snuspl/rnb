@@ -100,13 +100,13 @@ def runner(frame_queue,
   # write statistics AFTER the barrier so that
   # throughput is not affected by unnecessary file I/O
   with open(logname(job_id, g_idx, r_idx), 'w') as f:
-    time_card_summary.full_report(f)
+    time_card_summary.save_full_report(f)
 
   # quick summary of the statistics gathered
   # we skip the first few inferences for stable results
   NUM_SKIPS = 10
   if g_idx == 0 and r_idx == 0:
-    time_card_summary.summarize(NUM_SKIPS)
+    time_card_summary.print_summary(NUM_SKIPS)
 
     # We've observed cases where the loader processes do not exit until
     # all tensors spawned from the loaders are removed from scope (even if they
