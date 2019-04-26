@@ -68,7 +68,7 @@ def loader(filename_queue, frame_queue,
           # close the file since we're done with it
           loader.flush()
 
-          video = video.float()
+          frames = frames.float()
           # (num_clips, consecutive_frames, 3, width, height)
           # --> (num_clips, 3, consecutive_frames, width, height)
           frames = frames.permute(0, 2, 1, 3, 4)
