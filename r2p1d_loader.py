@@ -68,6 +68,11 @@ def loader(filename_queue, frame_queue,
           # close the file since we're done with it
           loader.flush()
 
+          video = video.float()
+          # (num_clips, consecutive_frames, 3, width, height)
+          # --> (num_clips, 3, consecutive_frames, width, height)
+          frames = frames.permute(0, 2, 1, 3, 4)
+
           time_card.record('enqueue_frames')
           try:
             frame_queue.put_nowait((frames, time_card))
