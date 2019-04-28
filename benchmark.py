@@ -33,14 +33,14 @@ def sanity_check(args):
 
   # Case 1: Check the format of the pipeline configuration file
   try:
-    with open(args.pipeline_file, 'r') as f:
+    with open(args.config_file_path, 'r') as f:
       pipeline = json.load(f)
 
     assert isinstance(pipeline, list)
     assert len(pipeline) == 1 # TODO #13: This can be removed after #13 is done.
 
     # Track which gpus are going to be used, for case 3.
-    used_logical_gpus = set()
+    logical_gpus_to_use = set()
 
     for step in pipeline:
       assert isinstance(step, dict)
@@ -48,7 +48,7 @@ def sanity_check(args):
       assert isinstance(step['gpus'], list)
       for gpu in step['gpus']:
         assert isinstance(gpu, int)
-        used_logical_gpus.add(gpu)
+        logical_gpus_to_use.add(gpu)
 
       # this limit needs to be adjusted if we expect keys other than
       # 'model' and 'gpus'
@@ -66,27 +66,27 @@ def sanity_check(args):
   py3nvml.nvmlInit()
  
   # Find the indices of GPUs that are free
-  available_gpu_idx = []
+  gpu_availability = []
   for i in range(py3nvml.nvmlDeviceGetCount()):      
     handle = py3nvml.nvmlDeviceGetHandleByIndex(i) 
     memory_info = py3nvml.nvmlDeviceGetMemoryInfo(handle)
     # memory_info.used returns the consumed GPU memory usage in bits
-    available_gpu_idx.append(memory_info.used == 0)
+    gpu_availability.append(memory_info.used == 0)
 
   # check availability of all requested gpus in the pipeline configuration
-  for logical_gpu in used_logical_gpus:
+  for logical_gpu in logical_gpus_to_use:
     if logical_gpu >= len(logical_to_physical_gpu_idx):
       print('[ERROR] Pipeline configuration contains an inaccessible GPU %d. '
-            'Add more gpus to CUDA_VISIBLE_DEVICES.' % logical_gpu)
+            'Add more GPUs to CUDA_VISIBLE_DEVICES.' % logical_gpu)
       sys.exit()
     physical_gpu = logical_to_physical_gpu_idx[logical_gpu]
 
-    if physical_gpu >= len(available_gpu_idx):
+    if physical_gpu >= len(gpu_availability):
       print('[ERROR] CUDA_VISIBLE_DEVICES contains a nonexistent GPU %d.'
             % physical_gpu)
       sys.exit()
 
-    if not available_gpu_idx[physical_gpu]:
+    if not gpu_availability[physical_gpu]:
       print('[ERROR] GPU %d (= GPU %d in pipeline) is not free at the moment.'
             % (physical_gpu, logical_gpu))
       sys.exit()
@@ -129,9 +129,9 @@ if __name__ == '__main__':
   parser.add_argument('-qs', '--queue_size',
                       help='Maximum queue size for inter-process queues',
                       type=positive_int, default=500)
-  parser.add_argument('-p', '--pipeline_file',
+  parser.add_argument('-c', '--config_file_path',
                       help='File path of the pipeline configuration file',
-                      type=str, default='pipeline.json')
+                      type=str, default='config/r2p1d-whole.json')
   args = parser.parse_args()
   print('Args:', args)
   
@@ -145,7 +145,7 @@ if __name__ == '__main__':
                                          args.queue_size)
 
   # do a quick pass through the pipeline to count the total number of runners
-  with open(args.pipeline_file, 'r') as f:
+  with open(args.config_file_path, 'r') as f:
     pipeline = json.load(f)
   num_runners = sum([len(step['gpus']) for step in pipeline])
   num_runners_first_step = len(pipeline[0]['gpus'])
@@ -251,5 +251,6 @@ if __name__ == '__main__':
     f.write('Termination flag: %d\n' % termination_flag.value)
 
   # copy the pipeline file to the log dir of this job, for later reference
-  shutil.copyfile(args.pipeline_file,
-                  os.path.join(logroot(job_id), args.pipeline_file))
+  basename = os.path.basename(args.config_file_path)
+  shutil.copyfile(args.config_file_path,
+                  os.path.join(logroot(job_id), basename))
