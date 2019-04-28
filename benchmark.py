@@ -18,36 +18,78 @@ def sanity_check(args):
   The function 'sanity_check' checks the arguments and terminates when an invalid state is observed. 
 
   The program will terminate in the following situations:
-  1) The values given for environment variable 'CUDA_VISIBLE_DEVICES' will be checked
+  1) The given pipeline configuration is written in an incorrect format.
+  2) The values given for environment variable 'CUDA_VISIBLE_DEVICES' will be checked
      to see if valid argument is given, and the program will terminate if not so. 
-  2) Here, we will regard GPUs with no process running along with no consumption in memory as 'free'. 
+  3) Here, we will regard GPUs with no process running along with no consumption in memory as 'free'.
      If a GPU has no process running, but is consuming some memory, we will regard the GPU as 'not-free', 
-     and prevent users from using it. If user requires more GPUs than the number of GPUs that are 
-     both accessible and free, the program will also terminate. 
+     and prevent users from using it. If user requires any GPU that is either
+     not accessible or not free, the program will also terminate.
   """
+  import json
   import os
   import sys
   from py3nvml import py3nvml
 
-  # Case 1: Return 'ValueError' if any types other than integers are set for this environment variable
-  visible_gpu_idx = sorted([int(x) for x in os.environ['CUDA_VISIBLE_DEVICES'].split(',')]) 
+  # Case 1: Check the format of the pipeline configuration file
+  try:
+    with open(args.config_file_path, 'r') as f:
+      pipeline = json.load(f)
+
+    assert isinstance(pipeline, list)
+    assert len(pipeline) == 1 # TODO #13: This can be removed after #13 is done.
+
+    # Track which gpus are going to be used, for case 3.
+    logical_gpus_to_use = set()
+
+    for step in pipeline:
+      assert isinstance(step, dict)
+      assert isinstance(step['model'], str)
+      assert isinstance(step['gpus'], list)
+      for gpu in step['gpus']:
+        assert isinstance(gpu, int)
+        logical_gpus_to_use.add(gpu)
+
+      # this limit needs to be adjusted if we expect keys other than
+      # 'model' and 'gpus'
+      if len(step) > 2:
+        print('[WARNING] Pipeline configuration contains unused keys.')
+
+  except Exception as err:
+    print('[ERROR] Malformed pipeline configuration file. See below:')
+    raise err
+
+  # Case 2: Return 'ValueError' if any types other than integers are set for this environment variable
+  logical_to_physical_gpu_idx = [int(x) for x in os.environ['CUDA_VISIBLE_DEVICES'].split(',')]
    
-  # Case 2: Check whether user requires more GPUs than the number of GPUs that are both accessible and free
+  # Case 3: Check whether user requires any GPU that is inaccessible or not free
   py3nvml.nvmlInit()
  
-  # Find the indices of GPUs that are both free and visible
-  available_gpu_idx = []
+  # Find the indices of GPUs that are free
+  gpu_availability = []
   for i in range(py3nvml.nvmlDeviceGetCount()):      
     handle = py3nvml.nvmlDeviceGetHandleByIndex(i) 
     memory_info = py3nvml.nvmlDeviceGetMemoryInfo(handle)
     # memory_info.used returns the consumed GPU memory usage in bits
-    if memory_info.used == 0 and i in visible_gpu_idx: 
-      available_gpu_idx.append(i)
+    gpu_availability.append(memory_info.used == 0)
 
-  if args.gpus > len(available_gpu_idx):
-    print('[WARNING] Exceeds the number of available GPUs (Requested: %d / Available: %d [%s]).' 
-          % (args.gpus, len(available_gpu_idx), ', '.join(map(str, available_gpu_idx))))
-    sys.exit()
+  # check availability of all requested gpus in the pipeline configuration
+  for logical_gpu in logical_gpus_to_use:
+    if logical_gpu >= len(logical_to_physical_gpu_idx):
+      print('[ERROR] Pipeline configuration contains an inaccessible GPU %d. '
+            'Add more GPUs to CUDA_VISIBLE_DEVICES.' % logical_gpu)
+      sys.exit()
+    physical_gpu = logical_to_physical_gpu_idx[logical_gpu]
+
+    if physical_gpu >= len(gpu_availability):
+      print('[ERROR] CUDA_VISIBLE_DEVICES contains a nonexistent GPU %d.'
+            % physical_gpu)
+      sys.exit()
+
+    if not gpu_availability[physical_gpu]:
+      print('[ERROR] GPU %d (= GPU %d in pipeline) is not free at the moment.'
+            % (physical_gpu, logical_gpu))
+      sys.exit()
   
   py3nvml.nvmlShutdown()
   
@@ -59,13 +101,16 @@ if __name__ == '__main__':
   mp.set_start_method('spawn')
 
   import argparse
+  import json
+  import os
+  import shutil
   import time
   from arg_utils import *
   from datetime import datetime as dt
   from torch.multiprocessing import Queue, Process, Semaphore, Value
 
   # change these if you want to use different client/loader/runner impls
-  from rnb_logging import logmeta
+  from rnb_logging import logmeta, logroot
   from control import TerminationFlag
   from client import client
   from r2p1d_loader import loader
@@ -75,10 +120,6 @@ if __name__ == '__main__':
   parser.add_argument('-mi', '--mean_interval_ms',
                       help='Mean event interval time (Poisson), milliseconds',
                       type=nonnegative_int, default=100)
-  parser.add_argument('-g', '--gpus', help='Number of GPUs to use',
-                      type=positive_int, default=1)
-  parser.add_argument('-r', '--replicas_per_gpu',
-                      help='Number of replicas per GPU', type=positive_int, default=1)
   parser.add_argument('-b', '--batch_size', help='Video batch size per replica',
                       type=positive_int, default=1)
   parser.add_argument('-v', '--videos', help='Total number of videos to run',
@@ -88,26 +129,26 @@ if __name__ == '__main__':
   parser.add_argument('-qs', '--queue_size',
                       help='Maximum queue size for inter-process queues',
                       type=positive_int, default=500)
-  parser.add_argument('-m', '--model',
-                      help='Full module path (including class name) to the model impl to run',
-                      type=str, default='models.r2p1d.model.R2P1DRunner')
+  parser.add_argument('-c', '--config_file_path',
+                      help='File path of the pipeline configuration file',
+                      type=str, default='config/r2p1d-whole.json')
   args = parser.parse_args()
   print('Args:', args)
   
   sanity_check(args)
 
-  job_id = '%s-mi%d-g%d-r%d-b%d-v%d-l%d-qs%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
-                                                 args.mean_interval_ms,
-                                                 args.gpus,
-                                                 args.replicas_per_gpu,
-                                                 args.batch_size,
-                                                 args.videos,
-                                                 args.loaders,
-                                                 args.queue_size)
+  job_id = '%s-mi%d-b%d-v%d-l%d-qs%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
+                                         args.mean_interval_ms,
+                                         args.batch_size,
+                                         args.videos,
+                                         args.loaders,
+                                         args.queue_size)
 
-  # assume homogeneous placement of runners
-  # in case of a heterogeneous placement, this needs to be changed accordingly
-  num_runners = args.gpus * args.replicas_per_gpu
+  # do a quick pass through the pipeline to count the total number of runners
+  with open(args.config_file_path, 'r') as f:
+    pipeline = json.load(f)
+  num_runners = sum([len(step['gpus']) for step in pipeline])
+  num_runners_first_step = len(pipeline[0]['gpus'])
 
   # barrier to ensure all processes start at the same time
   sta_bar_semaphore = Semaphore(0)
@@ -140,22 +181,33 @@ if __name__ == '__main__':
                                  fin_bar_semaphore, fin_bar_value, fin_bar_total))
 
   process_loader_list = [Process(target=loader,
-                                 args=(filename_queue, frame_queue, num_runners, l,
+                                 args=(filename_queue, frame_queue,
+                                       num_runners_first_step, l,
                                        termination_flag,
                                        sta_bar_semaphore, sta_bar_value, sta_bar_total,
                                        fin_bar_semaphore, fin_bar_value, fin_bar_total))
                          for l in range(args.loaders)]
 
   process_runner_list = []
-  for g in range(args.gpus):
-    for r in range(args.replicas_per_gpu):
-      process_runner_list.append(Process(target=runner,
-                                         args=(frame_queue,
-                                               job_id, g, r, global_inference_counter, args.videos,
-                                               termination_flag,
-                                               sta_bar_semaphore, sta_bar_value, sta_bar_total,
-                                               fin_bar_semaphore, fin_bar_value, fin_bar_total,
-                                               args.model)))
+  for step in pipeline:
+    model = step['model']
+    gpus = step['gpus']
+    replica_dict = {}
+    for g in gpus:
+      # check the replica index of this particular runner, for this gpu
+      # if this runner is the first, then give it index 0
+      replica_idx = replica_dict.get(g, 0)
+      process_runner = Process(target=runner,
+                               args=(frame_queue,
+                                     job_id, g, replica_idx,
+                                     global_inference_counter, args.videos,
+                                     termination_flag,
+                                     sta_bar_semaphore, sta_bar_value, sta_bar_total,
+                                     fin_bar_semaphore, fin_bar_value, fin_bar_total,
+                                     model))
+
+      replica_dict[g] = replica_idx + 1
+      process_runner_list.append(process_runner)
 
 
   for p in [process_client] + process_loader_list + process_runner_list:
@@ -197,3 +249,8 @@ if __name__ == '__main__':
     f.write('Args: %s\n' % str(args))
     f.write('%f %f\n' % (time_start, time_end))
     f.write('Termination flag: %d\n' % termination_flag.value)
+
+  # copy the pipeline file to the log dir of this job, for later reference
+  basename = os.path.basename(args.config_file_path)
+  shutil.copyfile(args.config_file_path,
+                  os.path.join(logroot(job_id), basename))
