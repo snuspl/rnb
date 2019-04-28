@@ -69,11 +69,6 @@ def runner(frame_queue,
             video = video.to(device=device)
           time_card.record('inference_start')
 
-          video = video.float()
-          # (num_clips, 3, consecutive_frames, width, height)
-          # --> (num_clips, consecutive_frames, 3, width, height)
-          video = video.permute(0, 2, 1, 3, 4)
-
           outputs = model(video)
           stream.synchronize()
           time_card.record('inference_finish')
