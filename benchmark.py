@@ -169,10 +169,14 @@ if __name__ == '__main__':
   # any process can alter this value to broadcast a termination signal
   termination_flag = Value('i', TerminationFlag.UNSET)
 
+  # size of queues, which should be large enough to accomodate videos without waiting
+  # (mean_interval_ms = 0 is a special case where all videos are put in queues at once)
+  queue_size = args.queue_size + num_runners + 1 if args.mean_interval_ms > 0 else args.videos
+
   # queue between client and loader
-  filename_queue = Queue(args.queue_size)
+  filename_queue = Queue(queue_size)
   # queue between loader and runner
-  frame_queue = Queue(args.queue_size)
+  frame_queue = Queue(queue_size)
 
   process_client = Process(target=client,
                            args=(filename_queue, args.mean_interval_ms,

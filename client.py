@@ -60,7 +60,8 @@ def client(filename_queue, beta, num_loaders, termination_flag,
       print('[WARNING] Filename queue is full. Aborting...')
       termination_flag.value = TerminationFlag.FILENAME_QUEUE_FULL
       break
-    time.sleep(exponential(float(beta) / 1000)) # milliseconds --> seconds
+    if beta > 0:
+      time.sleep(exponential(float(beta) / 1000)) # milliseconds --> seconds
 
   # mark the end of the input stream
   # the loaders should exit by themselves, but we enqueue these markers just in
