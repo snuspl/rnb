@@ -171,7 +171,8 @@ if __name__ == '__main__':
 
   # size of queues, which should be large enough to accomodate videos without waiting
   # (mean_interval_ms = 0 is a special case where all videos are put in queues at once)
-  queue_size = args.queue_size + num_runners + 1 if args.mean_interval_ms > 0 else args.videos
+  queue_size = args.queue_size if args.mean_interval_ms > 0 else args.videos + num_runners + 1 
+  print("queue size is set to %d" % queue_size)
 
   # queue between client and loader
   filename_queue = Queue(queue_size)
@@ -180,7 +181,7 @@ if __name__ == '__main__':
 
   process_client = Process(target=client,
                            args=(filename_queue, args.mean_interval_ms,
-                                 args.loaders, termination_flag,
+                                 args.loaders, args.videos, termination_flag,
                                  sta_bar_semaphore, sta_bar_value, sta_bar_total,
                                  fin_bar_semaphore, fin_bar_value, fin_bar_total))
 
