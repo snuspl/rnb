@@ -37,7 +37,6 @@ def sanity_check(args):
       pipeline = json.load(f)
 
     assert isinstance(pipeline, list)
-    assert len(pipeline) == 1 # TODO #13: This can be removed after #13 is done.
 
     # Track which gpus are going to be used, for case 3.
     logical_gpus_to_use = set()
@@ -188,20 +187,45 @@ if __name__ == '__main__':
                                        fin_bar_semaphore, fin_bar_value, fin_bar_total))
                          for l in range(args.loaders)]
 
+  # hold at least one reference for all queues
+  # otherwise, a queue object may get destroyed before child processes start
+  queues = [frame_queue]
   process_runner_list = []
-  for step in pipeline:
+  for step_idx, step in enumerate(pipeline):
+    is_final_step = step_idx == len(pipeline) - 1
+
+    # we don't really have to put in None here,
+    # but we do anyway to avoid handling corner cases below
+    queues.append(Queue(args.queue_size) if not is_final_step else None)
+
     model = step['model']
     gpus = step['gpus']
     replica_dict = {}
-    for g in gpus:
+    for j, g in enumerate(gpus):
+      is_first_instance = j == 0
+
       # check the replica index of this particular runner, for this gpu
       # if this runner is the first, then give it index 0
       replica_idx = replica_dict.get(g, 0)
+
+      # this step should create as many markers as the number of replicas for
+      # the next step (== len(pipeline[step_idx+1]['gpus']));
+      # the first instance creates all markers, other instances do nothing
+      num_exit_markers = len(pipeline[step_idx+1]['gpus']) \
+                         if not is_final_step and is_first_instance \
+                         else 0
+
+      # we only want a single instance of the last step to print summaries
+      print_summary = is_final_step and is_first_instance
+
+      # the last two queues in `queues` are
+      # the input and output queue for this step, respectively
       process_runner = Process(target=runner,
-                               args=(frame_queue,
+                               args=(queues[-2], queues[-1],
+                                     num_exit_markers, print_summary,
                                      job_id, g, replica_idx,
                                      global_inference_counter, args.videos,
-                                     termination_flag,
+                                     termination_flag, step_idx,
                                      sta_bar_semaphore, sta_bar_value, sta_bar_total,
                                      fin_bar_semaphore, fin_bar_value, fin_bar_total,
                                      model))

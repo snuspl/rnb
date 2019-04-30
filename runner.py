@@ -1,8 +1,8 @@
 """Runner implementation for executing neural networks on the RnB benchmark.
 """
-def runner(frame_queue,
+def runner(input_queue, output_queue, num_exit_markers, print_summary,
            job_id, g_idx, r_idx, global_inference_counter, num_videos,
-           termination_flag,
+           termination_flag, step_idx,
            sta_bar_semaphore, sta_bar_value, sta_bar_total,
            fin_bar_semaphore, fin_bar_value, fin_bar_total,
            model_module_path):
@@ -11,7 +11,7 @@ def runner(frame_queue,
   # not at the top of the file
   import numpy as np
   import torch
-  from queue import Empty
+  from queue import Empty, Full
   from rnb_logging import logname, TimeCardSummary
   from control import TerminationFlag
 
@@ -47,8 +47,10 @@ def runner(frame_queue,
         del tmp
 
 
-        # collect incoming time measurements for later logging
-        time_card_summary = TimeCardSummary()
+        if output_queue is None:
+          # this is the final step
+          # collect incoming time measurements for later logging
+          time_card_summary = TimeCardSummary()
 
         with sta_bar_value.get_lock():
           sta_bar_value.value += 1
@@ -58,32 +60,59 @@ def runner(frame_queue,
         sta_bar_semaphore.release()
 
         while termination_flag.value == TerminationFlag.UNSET:
-          tpl = frame_queue.get()
+          tpl = input_queue.get()
           if tpl is None:
             break
 
-          video, time_card = tpl
-          time_card.record('runner_start')
+          tensor, time_card = tpl
+          time_card.record('runner%d_start' % step_idx)
 
-          if video.device != device:
-            video = video.to(device=device)
-          time_card.record('inference_start')
+          if tensor.device != device:
+            tensor = tensor.to(device=device)
+          time_card.record('inference%d_start' % step_idx)
 
-          outputs = model(video)
+          outputs = model(tensor)
           stream.synchronize()
-          time_card.record('inference_finish')
+          time_card.record('inference%d_finish' % step_idx)
 
-          with global_inference_counter.get_lock():
-            global_inference_counter.value += 1
 
-            if global_inference_counter.value == num_videos:
-              print('Finished processing %d videos' % num_videos)
-              termination_flag.value = TerminationFlag.TARGET_NUM_VIDEOS_REACHED
-            elif global_inference_counter.value > num_videos:
-              # we've already reached our goal; abort immediately
+          if output_queue is None:
+            # this is the final step
+            # increment the inference counter
+            with global_inference_counter.get_lock():
+              global_inference_counter.value += 1
+
+              if global_inference_counter.value == num_videos:
+                print('Finished processing %d videos' % num_videos)
+                termination_flag.value = TerminationFlag.TARGET_NUM_VIDEOS_REACHED
+              elif global_inference_counter.value > num_videos:
+                # we've already reached our goal; abort immediately
+                break
+
+            time_card_summary.register(time_card)
+
+
+          else:
+            # this is NOT the final step
+            # pass on the intermediate tensor to the next step
+            try:
+              output_queue.put_nowait((outputs, time_card))
+            except Full:
+              print('[WARNING] Queue between runner step %d and %d is full. '
+                    'Aborting...' % (step_idx, step_idx+1))
+              termination_flag.value = TerminationFlag.FRAME_QUEUE_FULL
               break
 
-          time_card_summary.register(time_card)
+
+        # the termination flag has been raised
+        if output_queue is not None:
+          # this is NOT the final step
+          # mark the end of the input stream
+          try:
+            for _ in range(num_exit_markers):
+              output_queue.put_nowait(None)
+          except Full:
+            pass
 
   with fin_bar_value.get_lock():
     fin_bar_value.value += 1
@@ -92,25 +121,28 @@ def runner(frame_queue,
   fin_bar_semaphore.acquire()
   fin_bar_semaphore.release()
 
-  # write statistics AFTER the barrier so that
-  # throughput is not affected by unnecessary file I/O
-  with open(logname(job_id, g_idx, r_idx), 'w') as f:
-    time_card_summary.save_full_report(f)
+  if output_queue is None:
+    # this is the final step
 
-  # quick summary of the statistics gathered
-  # we skip the first few inferences for stable results
-  NUM_SKIPS = 10
-  if g_idx == 0 and r_idx == 0:
-    time_card_summary.print_summary(NUM_SKIPS)
+    # write statistics AFTER the barrier so that
+    # throughput is not affected by unnecessary file I/O
+    with open(logname(job_id, g_idx, r_idx), 'w') as f:
+      time_card_summary.save_full_report(f)
 
-    # We've observed cases where the loader processes do not exit until
-    # all tensors spawned from the loaders are removed from scope (even if they
-    # reach the end of the `loader` function).
-    # We clear the frame queue here so loaders can exit successfully.
-    # Note that it doesn't matter if this cleanup takes long, because the
-    # throughput measurement has already been done at the finish barrier above.
-    try:
-      while True:
-        frame_queue.get_nowait()
-    except Empty:
-      pass
+    # quick summary of the statistics gathered
+    # we skip the first few inferences for stable results
+    NUM_SKIPS = 10
+    if print_summary:
+      time_card_summary.print_summary(NUM_SKIPS)
+
+  # We've observed cases where the loader processes do not exit until
+  # all tensors spawned from the loaders are removed from scope (even if they
+  # reach the end of the `loader` function).
+  # We clear the input queue here so loaders can exit successfully.
+  # Note that it doesn't matter if this cleanup takes long, because the
+  # throughput measurement has already been done at the finish barrier above.
+  try:
+    while True:
+      input_queue.get_nowait()
+  except Empty:
+    pass
