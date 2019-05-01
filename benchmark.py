@@ -112,7 +112,7 @@ if __name__ == '__main__':
   # change these if you want to use different client/loader/runner impls
   from rnb_logging import logmeta, logroot
   from control import TerminationFlag
-  from client import client
+  from client import *
   from r2p1d_loader import loader
   from runner import runner
 
@@ -171,19 +171,29 @@ if __name__ == '__main__':
 
   # size of queues, which should be large enough to accomodate videos without waiting
   # (mean_interval_ms = 0 is a special case where all videos are put in queues at once)
-  queue_size = args.queue_size if args.mean_interval_ms > 0 else args.videos + num_runners + 1 
-  print("queue size is set to %d" % queue_size)
+  queue_size = args.queue_size if args.mean_interval_ms > 0 else args.videos + num_runners + 1
+  print("queue size is set to %d" % queue_size) # TODO remove
 
   # queue between client and loader
   filename_queue = Queue(queue_size)
   # queue between loader and runner
   frame_queue = Queue(queue_size)
 
-  process_client = Process(target=client,
-                           args=(filename_queue, args.mean_interval_ms,
+  # We use different client implementations for different mean intervals
+  if args.mean_interval_ms > 0:
+    client_impl = poisson_client
+    client_args = (filename_queue, args.mean_interval_ms,
+                                 args.loaders, termination_flag,
+                                 sta_bar_semaphore, sta_bar_value, sta_bar_total,
+                                 fin_bar_semaphore, fin_bar_value, fin_bar_total)
+  else:
+    client_impl = bulk_client
+    client_args = (filename_queue, args.mean_interval_ms,
                                  args.loaders, args.videos, termination_flag,
                                  sta_bar_semaphore, sta_bar_value, sta_bar_total,
-                                 fin_bar_semaphore, fin_bar_value, fin_bar_total))
+                                 fin_bar_semaphore, fin_bar_value, fin_bar_total)
+  process_client = Process(target=client_impl,
+                           args=client_args)
 
   process_loader_list = [Process(target=loader,
                                  args=(filename_queue, frame_queue,

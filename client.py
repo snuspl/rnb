@@ -1,21 +1,18 @@
-"""Basic client implementation for the video analytics inference benchmark.
-
-Reads video names from a hard-coded file path and sends them to the filename
-queue, one at a time. The interval time between enqueues is sampled from an
-exponential distribution, to model video inference queries as a Poisson process.
+"""Client implementations for the video analytics inference benchmark.
+   The Client simulates creating inference requests, assuming that 
+   the video is available in the server. We can evaluate different workload
+   characteristics by implementing different client; for example, we have poisson_client
+   that generates requests for single video at a time with random interval, and 
+   bulk_client that generates requests for all videos at once.
 """
-def client(filename_queue, beta, num_loaders, num_videos, termination_flag,
-           sta_bar_semaphore, sta_bar_value, sta_bar_total,
-           fin_bar_semaphore, fin_bar_value, fin_bar_total):
+
+def load_videos():
+  """Helper function that reads video names from a hard-coded file path.
+  """
   # PyTorch seems to have an issue with sharing modules between
   # multiple processes, so we just do the imports here and
   # not at the top of the file
   import os
-  import time
-  from numpy.random import exponential
-  from queue import Full
-  from control import TerminationFlag
-  from rnb_logging import TimeCard
 
   # file directory is assumed to be like:
   # root/
@@ -37,6 +34,22 @@ def client(filename_queue, beta, num_loaders, num_videos, termination_flag,
   if len(videos) <= 0:
     raise Exception('No video available.')
 
+def poisson_client(filename_queue, beta, num_loaders, termination_flag,
+           sta_bar_semaphore, sta_bar_value, sta_bar_total,
+           fin_bar_semaphore, fin_bar_value, fin_bar_total):
+  """
+  Sends loaded video to the filename queue, one at a time. 
+  The interval time between enqueues is sampled from an exponential distribution, 
+  to model video inference queries as a Poisson process.
+  """
+  import time
+  from numpy.random import exponential
+  from queue import Full
+  from control import TerminationFlag
+  from rnb_logging import TimeCard
+
+  videos = load_videos()
+
   with sta_bar_value.get_lock():
     sta_bar_value.value += 1
   if sta_bar_value.value == sta_bar_total:
@@ -46,9 +59,6 @@ def client(filename_queue, beta, num_loaders, num_videos, termination_flag,
 
   video_idx = 0
   while termination_flag.value == TerminationFlag.UNSET:
-    if beta == 0 and video_idx >= num_videos:
-      print("Now I'm going")
-      break
     video = videos[video_idx]
     # come back to the front of the list if we're at the end
     video_idx = (video_idx + 1) % len(videos)
@@ -63,8 +73,7 @@ def client(filename_queue, beta, num_loaders, num_videos, termination_flag,
       print('[WARNING] Filename queue is full. Aborting...')
       termination_flag.value = TerminationFlag.FILENAME_QUEUE_FULL
       break
-    if beta > 0:
-      time.sleep(exponential(float(beta) / 1000)) # milliseconds --> seconds
+    time.sleep(exponential(float(beta) / 1000)) # milliseconds --> seconds
 
   # mark the end of the input stream
   # the loaders should exit by themselves, but we enqueue these markers just in
@@ -84,3 +93,62 @@ def client(filename_queue, beta, num_loaders, num_videos, termination_flag,
     fin_bar_semaphore.release()
   fin_bar_semaphore.acquire()
   fin_bar_semaphore.release()
+
+def bulk_client(filename_queue, beta, num_loaders, num_videos, termination_flag,
+           sta_bar_semaphore, sta_bar_value, sta_bar_total,
+           fin_bar_semaphore, fin_bar_value, fin_bar_total):
+  """
+  Sends videos to the filename queue in bulk, as many as specified by the argument num_videos. 
+  This implementation is mainly for measuring maximum throughput where latency is not a primary metric. 
+  """
+  import time
+  from queue import Full
+  from control import TerminationFlag
+  from rnb_logging import TimeCard
+
+  assert beta == 0
+  videos = load_videos()
+
+  with sta_bar_value.get_lock():
+    sta_bar_value.value += 1
+  if sta_bar_value.value == sta_bar_total:
+    sta_bar_semaphore.release()
+  sta_bar_semaphore.acquire()
+  sta_bar_semaphore.release()
+
+  video_idx = 0
+  while video_idx < num_videos:
+    video = videos[video_idx]
+    # come back to the front of the list if we're at the end
+    video_idx = (video_idx + 1) % len(videos)
+
+    # create TimeCard instance to measure the time of key events
+    time_card = TimeCard()
+    time_card.record('enqueue_filename')
+
+    try:
+      filename_queue.put_nowait((video, time_card))
+    except Full:
+      print('[WARNING] Filename queue is full. Aborting...')
+      termination_flag.value = TerminationFlag.FILENAME_QUEUE_FULL
+      break
+
+  # mark the end of the input stream
+  # the loaders should exit by themselves, but we enqueue these markers just in
+  # case some loader is waiting on the queue
+  try:
+    for _ in range(num_loaders):
+      filename_queue.put_nowait(None)
+  except Full:
+    # if the queue is full, then we don't have to do anything because
+    # the loaders will not be blocked at queue.get() and eventually exit
+    # on their own
+    pass
+
+  with fin_bar_value.get_lock():
+    fin_bar_value.value += 1
+  if fin_bar_value.value == fin_bar_total:
+    fin_bar_semaphore.release()
+  fin_bar_semaphore.acquire()
+  fin_bar_semaphore.release()
+
