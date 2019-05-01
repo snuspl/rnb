@@ -172,7 +172,6 @@ if __name__ == '__main__':
   # size of queues, which should be large enough to accomodate videos without waiting
   # (mean_interval_ms = 0 is a special case where all videos are put in queues at once)
   queue_size = args.queue_size if args.mean_interval_ms > 0 else args.videos + num_runners + 1
-  print("queue size is set to %d" % queue_size) # TODO remove
 
   # queue between client and loader
   filename_queue = Queue(queue_size)
