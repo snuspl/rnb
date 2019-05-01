@@ -33,6 +33,7 @@ def load_videos():
 
   if len(videos) <= 0:
     raise Exception('No video available.')
+  return videos
 
 def poisson_client(filename_queue, beta, num_loaders, termination_flag,
            sta_bar_semaphore, sta_bar_value, sta_bar_total,
