@@ -107,7 +107,7 @@ if __name__ == '__main__':
   import time
   from arg_utils import *
   from datetime import datetime as dt
-  from torch.multiprocessing import Queue, Process, Semaphore, Value
+  from torch.multiprocessing import Queue, Process, Value, Barrier
 
   # change these if you want to use different client/loader/runner impls
   from rnb_logging import logmeta, logroot
@@ -150,17 +150,15 @@ if __name__ == '__main__':
   num_runners = sum([len(step['gpus']) for step in pipeline])
   num_runners_first_step = len(pipeline[0]['gpus'])
 
-  # barrier to ensure all processes start at the same time
-  sta_bar_semaphore = Semaphore(0)
-  sta_bar_value = Value('i', 0)
+  # total num of processes
   # runners + loaders + one client + one main process (this one)
-  sta_bar_total = num_runners + args.loaders + 2
-
+  bar_total = num_runners + args.loaders + 2 
+  
+  # barrier to ensure all processes start at the same time
+  sta_bar = Barrier(bar_total)
   # barrier to ensure all processes finish at the same time
-  fin_bar_semaphore = Semaphore(0)
-  fin_bar_value = Value('i', 0)
-  fin_bar_total = num_runners + args.loaders + 2
-
+  fin_bar = Barrier(bar_total)
+  
   # global counter for tracking the total number of videos processed
   # all processes will exit once the counter reaches args.videos
   global_inference_counter = Value('i', 0)
@@ -183,14 +181,12 @@ if __name__ == '__main__':
     client_impl = poisson_client
     client_args = (filename_queue, args.mean_interval_ms,
                                  args.loaders, termination_flag,
-                                 sta_bar_semaphore, sta_bar_value, sta_bar_total,
-                                 fin_bar_semaphore, fin_bar_value, fin_bar_total)
+                                 sta_bar, fin_bar)
   else:
     client_impl = bulk_client
     client_args = (filename_queue, args.mean_interval_ms,
                                  args.loaders, args.videos, termination_flag,
-                                 sta_bar_semaphore, sta_bar_value, sta_bar_total,
-                                 fin_bar_semaphore, fin_bar_value, fin_bar_total)
+                                 sta_bar, fin_bar)
   process_client = Process(target=client_impl,
                            args=client_args)
 
@@ -198,8 +194,7 @@ if __name__ == '__main__':
                                  args=(filename_queue, frame_queue,
                                        num_runners_first_step, l,
                                        termination_flag,
-                                       sta_bar_semaphore, sta_bar_value, sta_bar_total,
-                                       fin_bar_semaphore, fin_bar_value, fin_bar_total))
+                                       sta_bar, fin_bar))
                          for l in range(args.loaders)]
 
   process_runner_list = []
@@ -216,8 +211,7 @@ if __name__ == '__main__':
                                      job_id, g, replica_idx,
                                      global_inference_counter, args.videos,
                                      termination_flag,
-                                     sta_bar_semaphore, sta_bar_value, sta_bar_total,
-                                     fin_bar_semaphore, fin_bar_value, fin_bar_total,
+                                     sta_bar, fin_bar,
                                      model))
 
       replica_dict[g] = replica_idx + 1
@@ -227,26 +221,14 @@ if __name__ == '__main__':
   for p in [process_client] + process_loader_list + process_runner_list:
     p.start()
 
-  # we should be able to hide this whole semaphore mess in a
-  # single Barrier class or something...
-  with sta_bar_value.get_lock():
-    sta_bar_value.value += 1
-  if sta_bar_value.value == sta_bar_total:
-    sta_bar_semaphore.release()
-  sta_bar_semaphore.acquire()
-  sta_bar_semaphore.release()
+  sta_bar.wait()
 
   # we can exclude initialization time from the throughput measurement
   # by starting to measure time after the start barrier and not before
   time_start = time.time()
   print('START! %f' % time_start)
 
-  with fin_bar_value.get_lock():
-    fin_bar_value.value += 1
-  if fin_bar_value.value == fin_bar_total:
-    fin_bar_semaphore.release()
-  fin_bar_semaphore.acquire()
-  fin_bar_semaphore.release()
+  fin_bar.wait()
 
   time_end = time.time()
   print('FINISH! %f' % time_end)

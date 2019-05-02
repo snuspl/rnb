@@ -9,8 +9,7 @@ tensors of shape (num_clips, 3, consecutive_frames, width, height).
 """
 def loader(filename_queue, frame_queue,
            num_runners, idx, termination_flag,
-           sta_bar_semaphore, sta_bar_value, sta_bar_total,
-           fin_bar_semaphore, fin_bar_value, fin_bar_total):
+           sta_bar, fin_bar):
   # PyTorch seems to have an issue with sharing modules between
   # multiple processes, so we just do the imports here and
   # not at the top of the file
@@ -43,13 +42,8 @@ def loader(filename_queue, frame_queue,
           pass
         loader.flush()
 
-        with sta_bar_value.get_lock():
-          sta_bar_value.value += 1
-        if sta_bar_value.value == sta_bar_total:
-          sta_bar_semaphore.release()
-        sta_bar_semaphore.acquire()
-        sta_bar_semaphore.release()
-
+        sta_bar.wait()
+        
         while termination_flag.value == TerminationFlag.UNSET:
           tpl = filename_queue.get()
           if tpl is None:
@@ -96,10 +90,5 @@ def loader(filename_queue, frame_queue,
             pass
 
         loader.close()
-
-  with fin_bar_value.get_lock():
-    fin_bar_value.value += 1
-  if fin_bar_value.value == fin_bar_total:
-    fin_bar_semaphore.release()
-  fin_bar_semaphore.acquire()
-  fin_bar_semaphore.release()
+  
+  fin_bar.wait()

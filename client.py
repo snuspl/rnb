@@ -5,7 +5,6 @@
    that generates requests for single video at a time with random interval, and 
    bulk_client that generates requests for all videos at once.
 """
-
 def load_videos():
   """Helper function that reads video names from a hard-coded file path.
   """
@@ -36,8 +35,7 @@ def load_videos():
   return videos
 
 def poisson_client(filename_queue, beta, num_loaders, termination_flag,
-           sta_bar_semaphore, sta_bar_value, sta_bar_total,
-           fin_bar_semaphore, fin_bar_value, fin_bar_total):
+        sta_bar, fin_bar):
   """
   Sends loaded video to the filename queue, one at a time. 
   The interval time between enqueues is sampled from an exponential distribution, 
@@ -51,12 +49,7 @@ def poisson_client(filename_queue, beta, num_loaders, termination_flag,
 
   videos = load_videos()
 
-  with sta_bar_value.get_lock():
-    sta_bar_value.value += 1
-  if sta_bar_value.value == sta_bar_total:
-    sta_bar_semaphore.release()
-  sta_bar_semaphore.acquire()
-  sta_bar_semaphore.release()
+  sta_bar.wait()
 
   video_idx = 0
   while termination_flag.value == TerminationFlag.UNSET:
@@ -88,12 +81,7 @@ def poisson_client(filename_queue, beta, num_loaders, termination_flag,
     # on their own
     pass
 
-  with fin_bar_value.get_lock():
-    fin_bar_value.value += 1
-  if fin_bar_value.value == fin_bar_total:
-    fin_bar_semaphore.release()
-  fin_bar_semaphore.acquire()
-  fin_bar_semaphore.release()
+  fin_bar.wait()
 
 def bulk_client(filename_queue, beta, num_loaders, num_videos, termination_flag,
            sta_bar_semaphore, sta_bar_value, sta_bar_total,
@@ -110,12 +98,7 @@ def bulk_client(filename_queue, beta, num_loaders, num_videos, termination_flag,
   assert beta == 0
   videos = load_videos()
 
-  with sta_bar_value.get_lock():
-    sta_bar_value.value += 1
-  if sta_bar_value.value == sta_bar_total:
-    sta_bar_semaphore.release()
-  sta_bar_semaphore.acquire()
-  sta_bar_semaphore.release()
+  sta_bar.wait()
 
   video_idx = 0
   while video_idx < num_videos:
@@ -146,10 +129,4 @@ def bulk_client(filename_queue, beta, num_loaders, num_videos, termination_flag,
     # on their own
     pass
 
-  with fin_bar_value.get_lock():
-    fin_bar_value.value += 1
-  if fin_bar_value.value == fin_bar_total:
-    fin_bar_semaphore.release()
-  fin_bar_semaphore.acquire()
-  fin_bar_semaphore.release()
-
+  fin_bar.wait()
