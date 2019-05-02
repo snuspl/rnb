@@ -108,7 +108,7 @@ if __name__ == '__main__':
   from arg_utils import *
   from datetime import datetime as dt
   from torch.multiprocessing import Queue, Process, Value, Barrier 
-  
+
   # change these if you want to use different client/loader/runner impls
   from rnb_logging import logmeta, logroot
   from control import TerminationFlag
