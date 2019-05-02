@@ -14,10 +14,16 @@ df = df[df.num_replicas_per_gpu == 1]
 # filter out items s.t. batch_size != 1
 df = df[df.batch_size == 1]
 
+# filter out items s.t. num_loaders != 1
+df = df[df.num_loaders == 1]
+
 # remove irrelevant columns
-df = df.drop(['num_replicas_per_gpu',
-              'batch_size',
-              'num_videos'], axis=1)
+df = df.drop([
+    'num_replicas_per_gpu',
+    'batch_size',
+    'num_videos',
+    'num_loaders',
+    ], axis=1)
 
 # calculate latencies
 df['filename_queue_wait'] = (df['time_loader_start'] - df['time_enqueue_filename']) * 1000

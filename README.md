@@ -145,6 +145,8 @@ $ python setup.py install # install nvvl
 $ cd ~/rnb # or any directory that doesn't have a subdirectory called 'nvvl'
 $ python -c 'from nvvl import RnBLoader' # should finish without any errors
 
+$ pip install py3nvml # install Py3 bindings for NVML (unavailable for Anaconda)
+
 ```
 ### Reference Model  
 This repository contains the codes and models from the paper: 
