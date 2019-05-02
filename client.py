@@ -5,8 +5,7 @@ queue, one at a time. The interval time between enqueues is sampled from an
 exponential distribution, to model video inference queries as a Poisson process.
 """
 def client(filename_queue, beta, num_loaders, termination_flag,
-           sta_bar_semaphore, sta_bar_value, sta_bar_total,
-           fin_bar_semaphore, fin_bar_value, fin_bar_total):
+           sta_bar, fin_bar, bar_total):
   # PyTorch seems to have an issue with sharing modules between
   # multiple processes, so we just do the imports here and
   # not at the top of the file
@@ -36,14 +35,9 @@ def client(filename_queue, beta, num_loaders, termination_flag,
 
   if len(videos) <= 0:
     raise Exception('No video available.')
-
-  with sta_bar_value.get_lock():
-    sta_bar_value.value += 1
-  if sta_bar_value.value == sta_bar_total:
-    sta_bar_semaphore.release()
-  sta_bar_semaphore.acquire()
-  sta_bar_semaphore.release()
-
+  
+  sta_bar.wait()
+  
   video_idx = 0
   while termination_flag.value == TerminationFlag.UNSET:
     video = videos[video_idx]
@@ -73,10 +67,5 @@ def client(filename_queue, beta, num_loaders, termination_flag,
     # the loaders will not be blocked at queue.get() and eventually exit
     # on their own
     pass
-
-  with fin_bar_value.get_lock():
-    fin_bar_value.value += 1
-  if fin_bar_value.value == fin_bar_total:
-    fin_bar_semaphore.release()
-  fin_bar_semaphore.acquire()
-  fin_bar_semaphore.release()
+  
+  fin_bar.wait()
