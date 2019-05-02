@@ -3,7 +3,7 @@
 def runner(frame_queue,
            job_id, g_idx, r_idx, global_inference_counter, num_videos,
            termination_flag,
-           sta_bar, fin_bar, bar_total,
+           sta_bar, fin_bar,
            model_module_path):
   # PyTorch seems to have an issue with sharing modules between
   # multiple processes, so we just do the imports here and

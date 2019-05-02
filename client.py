@@ -5,7 +5,7 @@ queue, one at a time. The interval time between enqueues is sampled from an
 exponential distribution, to model video inference queries as a Poisson process.
 """
 def client(filename_queue, beta, num_loaders, termination_flag,
-           sta_bar, fin_bar, bar_total):
+           sta_bar, fin_bar):
   # PyTorch seems to have an issue with sharing modules between
   # multiple processes, so we just do the imports here and
   # not at the top of the file
@@ -15,7 +15,7 @@ def client(filename_queue, beta, num_loaders, termination_flag,
   from queue import Full
   from control import TerminationFlag
   from rnb_logging import TimeCard
-
+  
   # file directory is assumed to be like:
   # root/
   #   label1/
@@ -35,7 +35,7 @@ def client(filename_queue, beta, num_loaders, termination_flag,
 
   if len(videos) <= 0:
     raise Exception('No video available.')
-  
+ 
   sta_bar.wait()
   
   video_idx = 0

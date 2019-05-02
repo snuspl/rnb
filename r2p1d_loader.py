@@ -9,7 +9,7 @@ tensors of shape (num_clips, 3, consecutive_frames, width, height).
 """
 def loader(filename_queue, frame_queue,
            num_runners, idx, termination_flag,
-           sta_bar, fin_bar, bar_total):
+           sta_bar, fin_bar):
   # PyTorch seems to have an issue with sharing modules between
   # multiple processes, so we just do the imports here and
   # not at the top of the file

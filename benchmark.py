@@ -107,8 +107,7 @@ if __name__ == '__main__':
   import time
   from arg_utils import *
   from datetime import datetime as dt
-  from torch.multiprocessing import Queue, Process, Semaphore, Value
-  from threading import Barrier 
+  from torch.multiprocessing import Queue, Process, Value, Barrier
 
   # change these if you want to use different client/loader/runner impls
   from rnb_logging import logmeta, logroot
@@ -175,13 +174,13 @@ if __name__ == '__main__':
   process_client = Process(target=client,
                            args=(filename_queue, args.mean_interval_ms,
                                  args.loaders, termination_flag,
-                                 sta_bar, fin_bar, bar_total))
+                                 sta_bar, fin_bar))
 
   process_loader_list = [Process(target=loader,
                                  args=(filename_queue, frame_queue,
                                        num_runners_first_step, l,
                                        termination_flag,
-                                       sta_bar, fin_bar, bar_total))
+                                       sta_bar, fin_bar))
                          for l in range(args.loaders)]
 
   process_runner_list = []
@@ -198,18 +197,14 @@ if __name__ == '__main__':
                                      job_id, g, replica_idx,
                                      global_inference_counter, args.videos,
                                      termination_flag,
-                                     sta_bar, fin_bar, bar_total,
+                                     sta_bar, fin_bar,
                                      model))
 
       replica_dict[g] = replica_idx + 1
       process_runner_list.append(process_runner)
 
-  print("L207")
-  process_client.start()
-  print("L209")
   for p in [process_client] + process_loader_list + process_runner_list:
     p.start()
-  print("L210")
  
   sta_bar.wait()
   time_start = time.time()
