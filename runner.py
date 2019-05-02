@@ -3,8 +3,7 @@
 def runner(frame_queue,
            job_id, g_idx, r_idx, global_inference_counter, num_videos,
            termination_flag,
-           sta_bar_semaphore, sta_bar_value, sta_bar_total,
-           fin_bar_semaphore, fin_bar_value, fin_bar_total,
+           sta_bar, fin_bar,
            model_module_path):
   # PyTorch seems to have an issue with sharing modules between
   # multiple processes, so we just do the imports here and
@@ -50,12 +49,7 @@ def runner(frame_queue,
         # collect incoming time measurements for later logging
         time_card_summary = TimeCardSummary()
 
-        with sta_bar_value.get_lock():
-          sta_bar_value.value += 1
-        if sta_bar_value.value == sta_bar_total:
-          sta_bar_semaphore.release()
-        sta_bar_semaphore.acquire()
-        sta_bar_semaphore.release()
+        sta_bar.wait()
 
         while termination_flag.value == TerminationFlag.UNSET:
           tpl = frame_queue.get()
@@ -85,12 +79,7 @@ def runner(frame_queue,
 
           time_card_summary.register(time_card)
 
-  with fin_bar_value.get_lock():
-    fin_bar_value.value += 1
-  if fin_bar_value.value == fin_bar_total:
-    fin_bar_semaphore.release()
-  fin_bar_semaphore.acquire()
-  fin_bar_semaphore.release()
+  fin_bar.wait()
 
   # write statistics AFTER the barrier so that
   # throughput is not affected by unnecessary file I/O
