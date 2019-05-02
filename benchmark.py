@@ -107,8 +107,8 @@ if __name__ == '__main__':
   import time
   from arg_utils import *
   from datetime import datetime as dt
-  from torch.multiprocessing import Queue, Process, Value, Barrier
-
+  from torch.multiprocessing import Queue, Process, Value, Barrier 
+  
   # change these if you want to use different client/loader/runner impls
   from rnb_logging import logmeta, logroot
   from control import TerminationFlag
@@ -203,10 +203,13 @@ if __name__ == '__main__':
       replica_dict[g] = replica_idx + 1
       process_runner_list.append(process_runner)
 
+
   for p in [process_client] + process_loader_list + process_runner_list:
     p.start()
- 
+
   sta_bar.wait()
+  # we can exclude initialization time from the throughput measurement
+  # by starting to measure time after the start barrier and not before
   time_start = time.time()
   print('START! %f' % time_start)
 
@@ -215,6 +218,7 @@ if __name__ == '__main__':
   print('FINISH! %f' % time_end)
   total_time = time_end - time_start
   print('That took %f seconds' % total_time)
+
 
   print('Waiting for child processes to return...')
   for p in [process_client] + process_loader_list + process_runner_list:
