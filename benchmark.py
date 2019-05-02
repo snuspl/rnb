@@ -184,8 +184,7 @@ if __name__ == '__main__':
                                  sta_bar, fin_bar)
   else:
     client_impl = bulk_client
-    client_args = (filename_queue, args.mean_interval_ms,
-                                 args.loaders, args.videos, termination_flag,
+    client_args = (filename_queue, args.loaders, args.videos, termination_flag,
                                  sta_bar, fin_bar)
   process_client = Process(target=client_impl,
                            args=client_args)

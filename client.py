@@ -1,8 +1,8 @@
 """Client implementations for the video analytics inference benchmark.
    The Client simulates creating inference requests, assuming that 
-   the video is available in the server. We can evaluate different workload
-   characteristics by implementing different client; for example, we have poisson_client
-   that generates requests for single video at a time with random interval, and 
+   the video is available on the server. We can evaluate different workload
+   characteristics by implementing different clients; for example, we have poisson_client
+   that generates requests for a single video at a time with random intervals, and 
    bulk_client that generates requests for all videos at once.
 """
 def load_videos():
@@ -83,7 +83,7 @@ def poisson_client(filename_queue, beta, num_loaders, termination_flag,
 
   fin_bar.wait()
 
-def bulk_client(filename_queue, beta, num_loaders, num_videos, termination_flag,
+def bulk_client(filename_queue, num_loaders, num_videos, termination_flag,
            sta_bar_semaphore, sta_bar_value, sta_bar_total,
            fin_bar_semaphore, fin_bar_value, fin_bar_total):
   """
@@ -95,16 +95,15 @@ def bulk_client(filename_queue, beta, num_loaders, num_videos, termination_flag,
   from control import TerminationFlag
   from rnb_logging import TimeCard
 
-  assert beta == 0
   videos = load_videos()
 
   sta_bar.wait()
 
-  video_idx = 0
-  while video_idx < num_videos:
-    video = videos[video_idx]
+  video_count = 0
+  while video_count < num_videos:
     # come back to the front of the list if we're at the end
-    video_idx = (video_idx + 1) % len(videos)
+    video_count += 1
+    video = videos[video_count % len(videos)]
 
     # create TimeCard instance to measure the time of key events
     time_card = TimeCard()
