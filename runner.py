@@ -50,6 +50,7 @@ def runner(frame_queue,
         time_card_summary = TimeCardSummary()
 
         sta_bar.wait()
+
         while termination_flag.value == TerminationFlag.UNSET:
           tpl = frame_queue.get()
           if tpl is None:

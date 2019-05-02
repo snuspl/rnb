@@ -107,7 +107,7 @@ if __name__ == '__main__':
   import time
   from arg_utils import *
   from datetime import datetime as dt
-  from torch.multiprocessing import Queue, Process, Value, Barrier 
+  from torch.multiprocessing import Queue, Process, Value, Barrier
 
   # change these if you want to use different client/loader/runner impls
   from rnb_logging import logmeta, logroot
@@ -149,6 +149,7 @@ if __name__ == '__main__':
     pipeline = json.load(f)
   num_runners = sum([len(step['gpus']) for step in pipeline])
   num_runners_first_step = len(pipeline[0]['gpus'])
+
   # total num of processes
   # runners + loaders + one client + one main process (this one)
   bar_total = num_runners + args.loaders + 2 
@@ -208,12 +209,14 @@ if __name__ == '__main__':
     p.start()
 
   sta_bar.wait()
+
   # we can exclude initialization time from the throughput measurement
   # by starting to measure time after the start barrier and not before
   time_start = time.time()
   print('START! %f' % time_start)
 
   fin_bar.wait()
+
   time_end = time.time()
   print('FINISH! %f' % time_end)
   total_time = time_end - time_start

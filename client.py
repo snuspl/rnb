@@ -15,7 +15,7 @@ def client(filename_queue, beta, num_loaders, termination_flag,
   from queue import Full
   from control import TerminationFlag
   from rnb_logging import TimeCard
-  
+
   # file directory is assumed to be like:
   # root/
   #   label1/
