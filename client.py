@@ -1,4 +1,5 @@
 """Client implementations for the video analytics inference benchmark.
+
    The Client simulates creating inference requests, assuming that 
    the video is available on the server. We can evaluate different workload
    characteristics by implementing different clients; for example, we have poisson_client
@@ -36,8 +37,8 @@ def load_videos():
 
 def poisson_client(filename_queue, beta, num_loaders, termination_flag,
         sta_bar, fin_bar):
-  """
-  Sends loaded video to the filename queue, one at a time. 
+  """Sends loaded video to the filename queue, one at a time.
+
   The interval time between enqueues is sampled from an exponential distribution, 
   to model video inference queries as a Poisson process.
   """
@@ -86,8 +87,8 @@ def poisson_client(filename_queue, beta, num_loaders, termination_flag,
 def bulk_client(filename_queue, num_loaders, num_videos, termination_flag,
            sta_bar_semaphore, sta_bar_value, sta_bar_total,
            fin_bar_semaphore, fin_bar_value, fin_bar_total):
-  """
-  Sends videos to the filename queue in bulk, as many as specified by the argument num_videos. 
+  """Sends videos to the filename queue in bulk, as many as specified by the argument num_videos.
+
   This implementation is mainly for measuring maximum throughput where latency is not a primary metric. 
   """
   import time
