@@ -151,6 +151,45 @@ class R2Plus1DClassifier(nn.Module):
 
         return x
 
+class R2Plus1DLayerWrapper(nn.Module):
+    """Forms the overall ResNet feature extractor by initializng 5 layers, with the number of blocks in 
+    each layer set by layer_sizes, and by performing a global average pool at the end producing a 
+    512-dimensional vector for each element in the batch.
+        
+        Args:
+            layer_sizes (tuple): An iterable containing the number of blocks in each layer
+            block_type (Module, optional): Type of block that is to be used to form the layers. Default: SpatioTemporalResBlock. 
+        """
+    def __init__(self, start_idx, end_idx, layer_sizes=[2, 2, 2, 2], block_type=SpatioTemporalResBlock):
+        super(R2Plus1DLayerWrapper, self).__init__()
+        
+        self.conv1 = SpatioTemporalConv(3, 64, [3, 7, 7], stride=[1, 2, 2], padding=[1, 3, 3])
+        self.conv2 = SpatioTemporalResLayer(64, 64, 3, layer_sizes[0], block_type=block_type)
+        self.conv3 = SpatioTemporalResLayer(64, 128, 3, layer_sizes[0], block_type=block_type, downsample=True)
+        self.conv4 = SpatioTemporalResLayer(128, 256, 3, layer_sizes[0], block_type=block_type, downsample=True)
+        self.conv5 = SpatioTemporalResLayer(256, 512, 3, layer_sizes[0], block_type=block_type, downsample=True)
+        self.pool = nn.AdaptiveAvgPool3d(1)
+        
+        self.start_idx = start_idx 
+        self.end_idx = end_idx 
+        print("TYPE OF SPATIO TEMP CONV: ", type(start_idx))
+        layer_dict = { 1: [self.conv1], 
+                       2: [self.conv2], 
+                       3: [self.conv3], 
+                       4: [self.conv4],
+                       5: [self.conv5, self.pool]}
+         
+        self.model_layer = []
+        for i in range(start_idx, end_idx+1):
+          self.model_layer.extend(layer_dict[i])
+        #print("[MODEL LAYER NETWORK.PY LINE185]: ", self.model_layer)
+
+    def forward(self, x):
+        for layer in self.model_layer:
+          x = layer(x)
+        
+        return x.view(-1, 512) if self.end_idx == 5 else x  
+
 
 class R2Plus1DLayer12Net(nn.Module):
     """A shorter version of R2Plus1DNet, using only the first two layers."""
@@ -161,8 +200,11 @@ class R2Plus1DLayer12Net(nn.Module):
 
 
     def forward(self, x):
+        print("L200: ", x.shape)
         x = self.conv1(x)
+        print("L202: ", x.shape)
         x = self.conv2(x)
+        print("L203: ", x.shape)
         return x
 
 
@@ -192,10 +234,15 @@ class R2Plus1DLayer345Net(nn.Module):
 
 
     def forward(self, x):
+        print("L234: ", x.shape)
         x = self.conv3(x)
+        print("L236: ", x.shape)
         x = self.conv4(x)
+        print("L238: ", x.shape)
         x = self.conv5(x)
+        print("L240: ", x.shape)
         x = self.pool(x)
+        print("L242: ", x.shape)
         return x.view(-1, 512)
 
 

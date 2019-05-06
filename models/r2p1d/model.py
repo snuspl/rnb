@@ -1,9 +1,11 @@
 import torch
 
 from models.r2p1d.network import R2Plus1DClassifier, SpatioTemporalResBlock
-from models.r2p1d.network import R2Plus1DLayer12Wrapper
-from models.r2p1d.network import R2Plus1DLayer345Wrapper
+from models.r2p1d.network import R2Plus1DLayerWrapper
+#from models.r2p1d.network import R2Plus1DLayer12Wrapper
+#from models.r2p1d.network import R2Plus1DLayer345Wrapper
 from runner_model import RunnerModel
+
 
 CKPT_PATH = '/cmsdata/ssd0/cmslab/Kinetics-400/ckpt/model_data.pth.tar'
 
@@ -26,6 +28,40 @@ class R2P1DRunner(RunnerModel):
   def __call__(self, input):
     return self.model(input)
 
+class R2P1DLayerRunner(RunnerModel):
+  def __init__(self, device, start_idx, end_idx, num_classes=400, layer_sizes=[2,2,2,2], block_type=SpatioTemporalResBlock):
+    super(R2P1DLayerRunner, self).__init__( end_idx)
+    print("R2P1D RUNNER: ", start_idx, end_idx, type(start_idx), type(end_idx)) 
+    self.layer_sizes = layer_sizes = [2 for i in range(start_idx, end_idx+1)]
+    self.model = R2Plus1DLayerWrapper(start_idx, end_idx).__init__(start_idx, end_idx)
+
+    ckpt = torch.load(CKPT_PATH, map_location=device)
+    
+    state_dict = {}
+    #filter out weights that are not used in this model  
+    for i in range(start_idx, end_idx+1):
+      layer = 'res2plus1d.conv{}'.format(i)
+      print(layer)
+      tmp_state_dict = {k:v for k, v in ckpt['state_dict'].items() if
+                        k.startswith(layer)}
+      tmp_state_dict.update({k:v for k,v in ckpt['state_dict'].items() if 
+                             k.startswith('linear') and i == end_idx})
+      state_dict.update(tmp_state_dict)
+    print("TYPE OF MODEL [RUNNER 49]: ", type(self.model), len(state_dict.keys())) 
+    self.model.load_state_dict(state_dict) 
+    
+
+  def input_shape(self, start_idx):
+    input_dict = { 1: (10, 3, 8, 112, 112), 
+                   2: (10, 64, 8, 56, 56),
+                   3: (10, 64, 8, 56, 56),
+                   4: (10, 128, 4, 28, 28),
+                   5: (10, 256, 2, 14, 14) }
+    return input_dict[start_idx]
+
+  def __call__(self, input):
+    return self.model(input)
+
 
 class R2P1DLayer12Runner(RunnerModel):
   """RunnerModel impl for the first two layers of the R(2+1)D model."""
@@ -39,6 +75,8 @@ class R2P1DLayer12Runner(RunnerModel):
     state_dict = {k:v for k,v in ckpt['state_dict'].items() if
                   k.startswith('res2plus1d.conv1') or
                   k.startswith('res2plus1d.conv2')}
+    #print("[model.py L57 / Runner] STATE_DICT: ", state_dict)
+    #print("[model.py L58 / Runner] STATE DICT ITEMS: ", ckpt['state_dict'].items())
     self.model.load_state_dict(state_dict)
 
 
