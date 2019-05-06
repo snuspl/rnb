@@ -36,10 +36,10 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
         #model_name = model_module_path[delimiter_idx+1:] 
         module = __import__(module_path, fromlist=(model_name))
         model_class = getattr(module, model_name)
-        print("module ", module_path, model_name)
+        print("=======RUNNER 39=======", model_class)
         model = model_class(device, start_idx, end_idx)
         input_shape = model.input_shape()
-
+        print("========RUNNER 42=========", type(model), input_shape)
         # first "warm up" the model with a few sample inferences
         tmp = torch.randn(*input_shape, dtype=torch.float32).cuda()
         for _ in range(3):

@@ -30,10 +30,10 @@ class R2P1DRunner(RunnerModel):
 
 class R2P1DLayerRunner(RunnerModel):
   def __init__(self, device, start_idx, end_idx, num_classes=400, layer_sizes=[2,2,2,2], block_type=SpatioTemporalResBlock):
-    super(R2P1DLayerRunner, self).__init__( end_idx)
+    super(R2P1DLayerRunner, self).__init__(end_idx)
     print("R2P1D RUNNER: ", start_idx, end_idx, type(start_idx), type(end_idx)) 
     self.layer_sizes = layer_sizes = [2 for i in range(start_idx, end_idx+1)]
-    self.model = R2Plus1DLayerWrapper(start_idx, end_idx).__init__(start_idx, end_idx)
+    self.model = R2Plus1DLayerWrapper(num_classes, start_idx, end_idx).__init__(num_classes, start_idx, end_idx)
 
     ckpt = torch.load(CKPT_PATH, map_location=device)
     
@@ -47,7 +47,7 @@ class R2P1DLayerRunner(RunnerModel):
       tmp_state_dict.update({k:v for k,v in ckpt['state_dict'].items() if 
                              k.startswith('linear') and i == end_idx})
       state_dict.update(tmp_state_dict)
-    print("TYPE OF MODEL [RUNNER 49]: ", type(self.model), len(state_dict.keys())) 
+    print("TYPE OF MODEL [model.py R2pldlayerRunner 50]: ", type(self.model), len(state_dict.keys())) 
     self.model.load_state_dict(state_dict) 
     
 
