@@ -179,12 +179,12 @@ if __name__ == '__main__':
   if args.mean_interval_ms > 0:
     client_impl = poisson_client
     client_args = (filename_queue, args.mean_interval_ms,
-                                 args.loaders, termination_flag,
-                                 sta_bar, fin_bar)
+                   args.loaders, termination_flag,
+                   sta_bar, fin_bar)
   else:
     client_impl = bulk_client
     client_args = (filename_queue, args.loaders, args.videos, termination_flag,
-                                 sta_bar, fin_bar)
+                   sta_bar, fin_bar)
   process_client = Process(target=client_impl,
                            args=client_args)
 
@@ -204,7 +204,7 @@ if __name__ == '__main__':
 
     # Create a queue for the processes in this step to put results into.
     # We don't need a queue for the last step, so we add a None placeholder.
-    output_queue = Queue(args.queue_size) if not is_final_step else None
+    output_queue = Queue(queue_size) if not is_final_step else None
     queues.append(output_queue)
 
     model = step['model']

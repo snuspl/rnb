@@ -35,7 +35,7 @@ def load_videos():
   return videos
 
 def poisson_client(filename_queue, beta, num_loaders, termination_flag,
-        sta_bar, fin_bar):
+                   sta_bar, fin_bar):
   """Sends loaded video to the filename queue, one at a time.
 
   The interval time between enqueues is sampled from an exponential distribution, 
@@ -84,8 +84,7 @@ def poisson_client(filename_queue, beta, num_loaders, termination_flag,
   fin_bar.wait()
 
 def bulk_client(filename_queue, num_loaders, num_videos, termination_flag,
-           sta_bar_semaphore, sta_bar_value, sta_bar_total,
-           fin_bar_semaphore, fin_bar_value, fin_bar_total):
+                sta_bar, fin_bar):
   """Sends videos to the filename queue in bulk, as many as specified by the argument num_videos.
 
   This implementation is mainly for measuring maximum throughput where latency is not a primary metric. 
@@ -102,8 +101,8 @@ def bulk_client(filename_queue, num_loaders, num_videos, termination_flag,
   video_count = 0
   while video_count < num_videos:
     # come back to the front of the list if we're at the end
-    video_count += 1
     video = videos[video_count % len(videos)]
+    video_count += 1
 
     # create TimeCard instance to measure the time of key events
     time_card = TimeCard()
