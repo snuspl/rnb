@@ -37,7 +37,6 @@ def sanity_check(args):
       pipeline = json.load(f)
 
     assert isinstance(pipeline, list)
-    assert len(pipeline) == 1 # TODO #13: This can be removed after #13 is done.
 
     # Track which gpus are going to be used, for case 3.
     logical_gpus_to_use = set()
@@ -196,24 +195,50 @@ if __name__ == '__main__':
                                        sta_bar, fin_bar))
                          for l in range(args.loaders)]
 
+  # hold at least one reference for all queues
+  # otherwise, a queue object may get destroyed before child processes start
+  queues = [frame_queue]
   process_runner_list = []
-  for step in pipeline:
+  for step_idx, step in enumerate(pipeline):
+    is_final_step = step_idx == len(pipeline) - 1
+
+    # Create a queue for the processes in this step to put results into.
+    # We don't need a queue for the last step, so we add a None placeholder.
+    output_queue = Queue(args.queue_size) if not is_final_step else None
+    queues.append(output_queue)
+
     model = step['model']
     gpus = step['gpus']
     replica_dict = {}
-    for g in gpus:
+    for instance_idx, gpu in enumerate(gpus):
+      is_first_instance = instance_idx == 0
+
       # check the replica index of this particular runner, for this gpu
       # if this runner is the first, then give it index 0
-      replica_idx = replica_dict.get(g, 0)
+      replica_idx = replica_dict.get(gpu, 0)
+
+      # this step should create as many markers as the number of replicas for
+      # the next step (== len(pipeline[step_idx+1]['gpus']));
+      # the first instance creates all markers, other instances do nothing
+      num_exit_markers = len(pipeline[step_idx+1]['gpus']) \
+                         if not is_final_step and is_first_instance \
+                         else 0
+
+      # we only want a single instance of the last step to print summaries
+      print_summary = is_final_step and is_first_instance
+
+      # the last two queues in `queues` are
+      # the input and output queue for this step, respectively
       process_runner = Process(target=runner,
-                               args=(frame_queue,
-                                     job_id, g, replica_idx,
+                               args=(queues[-2], queues[-1],
+                                     num_exit_markers, print_summary,
+                                     job_id, gpu, replica_idx,
                                      global_inference_counter, args.videos,
-                                     termination_flag,
+                                     termination_flag, step_idx,
                                      sta_bar, fin_bar,
                                      model))
 
-      replica_dict[g] = replica_idx + 1
+      replica_dict[gpu] = replica_idx + 1
       process_runner_list.append(process_runner)
 
 

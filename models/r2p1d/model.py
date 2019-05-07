@@ -1,6 +1,8 @@
 import torch
 
 from models.r2p1d.network import R2Plus1DClassifier, SpatioTemporalResBlock
+from models.r2p1d.network import R2Plus1DLayer12Wrapper
+from models.r2p1d.network import R2Plus1DLayer345Wrapper
 from runner_model import RunnerModel
 
 CKPT_PATH = '/cmsdata/ssd0/cmslab/Kinetics-400/ckpt/model_data.pth.tar'
@@ -18,7 +20,57 @@ class R2P1DRunner(RunnerModel):
 
 
   def input_shape(self):
-    return (10, 3, 8, 112, 112)  
+    return (10, 3, 8, 112, 112)
+
+
+  def __call__(self, input):
+    return self.model(input)
+
+
+class R2P1DLayer12Runner(RunnerModel):
+  """RunnerModel impl for the first two layers of the R(2+1)D model."""
+  def __init__(self, device, layer_size=2, block_type=SpatioTemporalResBlock):
+    super(R2P1DLayer12Runner, self).__init__(device)
+
+    self.model = R2Plus1DLayer12Wrapper(layer_size, block_type).to(device)
+    ckpt = torch.load(CKPT_PATH, map_location=device)
+
+    # filter out weights that are not used in this model
+    state_dict = {k:v for k,v in ckpt['state_dict'].items() if
+                  k.startswith('res2plus1d.conv1') or
+                  k.startswith('res2plus1d.conv2')}
+    self.model.load_state_dict(state_dict)
+
+
+  def input_shape(self):
+    return (10, 3, 8, 112, 112)
+
+
+  def __call__(self, input):
+    return self.model(input)
+
+
+class R2P1DLayer345Runner(RunnerModel):
+  """RunnerModel impl for the last three layers of the R(2+1)D model."""
+  def __init__(self, device, num_classes=400, layer_sizes=[2,2,2],
+                     block_type=SpatioTemporalResBlock):
+    super(R2P1DLayer345Runner, self).__init__(device)
+
+    self.model = R2Plus1DLayer345Wrapper(num_classes, layer_sizes, block_type) \
+                     .to(device)
+    ckpt = torch.load(CKPT_PATH, map_location=device)
+
+    # filter out weights that are not used in this model
+    state_dict = {k:v for k,v in ckpt['state_dict'].items() if
+                      k.startswith('res2plus1d.conv3') or
+                      k.startswith('res2plus1d.conv4') or
+                      k.startswith('res2plus1d.conv5') or
+                      k.startswith('linear')}
+    self.model.load_state_dict(state_dict)
+
+
+  def input_shape(self):
+    return (10, 64, 8, 56, 56)
 
 
   def __call__(self, input):
