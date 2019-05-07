@@ -83,6 +83,9 @@ public:
     if (curr < MAX_NUM_KERNELS) {
       // we only keep track of kernels up to MAX_NUM_KERNELS
       _kernelNames[curr] = std::string(name);
+    } else if (curr == MAX_NUM_KERNELS) {
+      fprintf(stderr, "[WARNING] Too many kernels. Will only track "
+                      "the first %d kernels.\n", MAX_NUM_KERNELS);
     }
   }
 
@@ -92,7 +95,11 @@ public:
 
   std::vector<std::string> getKernelNames() {
     std::vector<std::string> ret;
-    for (int i = 0; i < _counter; ++i) {
+
+    // convert atomic<int> into int so that we can use the ternary operator
+    int num_kernels = _counter;
+    num_kernels = num_kernels < MAX_NUM_KERNELS ? num_kernels : MAX_NUM_KERNELS;
+    for (int i = 0; i < num_kernels; ++i) {
       ret.push_back(_kernelNames[i]);
     }
     return ret;
