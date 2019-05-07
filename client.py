@@ -1,14 +1,13 @@
 """Client implementations for the video analytics inference benchmark.
 
-   The Client simulates creating inference requests, assuming that 
-   the video is available on the server. We can evaluate different workload
-   characteristics by implementing different clients; for example, we have poisson_client
-   that generates requests for a single video at a time with random intervals, and 
-   bulk_client that generates requests for all videos at once.
+The Client simulates creating inference requests, assuming that
+videos are available on the server. We can evaluate different workload
+characteristics by implementing different clients; for example, we have poisson_client
+that generates requests for a single video at a time with random intervals, and
+bulk_client that generates requests for all videos at once.
 """
 def load_videos():
-  """Helper function that reads video names from a hard-coded file path.
-  """
+  """Helper function that reads video names from a hard-coded file path."""
   # PyTorch seems to have an issue with sharing modules between
   # multiple processes, so we just do the imports here and
   # not at the top of the file
@@ -51,7 +50,7 @@ def poisson_client(filename_queue, beta, num_loaders, termination_flag,
   videos = load_videos()
 
   sta_bar.wait()
-
+  
   video_idx = 0
   while termination_flag.value == TerminationFlag.UNSET:
     video = videos[video_idx]
