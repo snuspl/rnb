@@ -190,3 +190,23 @@ $ ls logs/190327_145542-mi100-g2-r1-b1-v100/
 g0-r0.txt  g1-r0.txt  log-meta.txt
 ```
 
+## Testing CUPTI
+The NVIDIA CUDA Profiling Tools Interface (CUPTI) allows us to collect GPU hardware-specific metrics for profiling a CUDA application.
+We are currently experimenting with CUPTI to track the achieved occupancy of a GPU.
+Unfortunately, CUPTI is provided in CUDA C/C++ so we made custom Python bindings to access CUPTI features within a Python program.
+Follow the steps below to build the Python-C++ bridge and test it.
+
+```bash
+# compiles utils/cupti.cpp to generate utils/cupti.so
+$ ./build_cupti.sh
+
+# let the linker know of CUPTI libraries
+# this step can be skipped if LD_LIBRARY_PATH is already set correctly
+$ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/extras/CUPTI/lib64
+
+# fetch and print GPU kernel names using CUPTI
+$ python test_cupti.py
+_Z21kernelPointwiseApply2I6CopyOpIffEffjLi1ELi2EEv10OffsetInfoIT0_T2_XT3_EES2_IT1_S4_XT4_EES4_T_
+sgemm_32x32x32_NT_vec
+```
+
