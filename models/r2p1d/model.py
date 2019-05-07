@@ -33,7 +33,7 @@ class R2P1DLayerRunner(RunnerModel):
     super(R2P1DLayerRunner, self).__init__(device)
     
     self.start_idx = start_idx
-    self.model = R2Plus1DLayerWrapper(num_classes, start_idx, end_idx, layer_size, block_type).to(device)
+    self.model = R2Plus1DLayerWrapper(start_idx, end_idx, num_classes, layer_size, block_type).to(device)
     ckpt = torch.load(CKPT_PATH, map_location=device)
 
     state_dict = {}
@@ -44,8 +44,6 @@ class R2P1DLayerRunner(RunnerModel):
       tmp_state_dict = {k:v for k, v in ckpt['state_dict'].items() if
                         k.startswith(layer) or
                         k.startswith('linear')}
-      #tmp_state_dict.update({k:v for k,v in ckpt['state_dict'].items() if 
-      #                       k.startswith('linear') })
       state_dict.update(tmp_state_dict)
     self.model.load_state_dict(state_dict) 
     

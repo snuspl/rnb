@@ -152,7 +152,7 @@ class R2Plus1DClassifier(nn.Module):
         return x
 
 class R2Plus1DLayerNet(nn.Module):
-    def __init__(self, num_classes, start_idx, end_idx, layer_size=2, block_type=SpatioTemporalResBlock):
+    def __init__(self, start_idx, end_idx, num_classes, layer_size=2, block_type=SpatioTemporalResBlock):
         super(R2Plus1DLayerNet, self).__init__()
         
         self.start_idx = start_idx
@@ -193,10 +193,10 @@ class R2Plus1DLayerNet(nn.Module):
         
 
 class R2Plus1DLayerWrapper(nn.Module):
-    def __init__(self, num_classes, start_idx, end_idx, layer_size=2, block_type=SpatioTemporalResBlock):
+    def __init__(self, start_idx, end_idx, num_classes, layer_size=2, block_type=SpatioTemporalResBlock):
         super(R2Plus1DLayerWrapper, self).__init__()
-        self.res2plus1d = R2Plus1DLayerNet(num_classes, start_idx, end_idx, layer_size, block_type)
-        #print("LAYER WRAPPER AT: ", start_idx, end_idx, self.res2plus1d)
+        
+        self.res2plus1d = R2Plus1DLayerNet(start_idx, end_idx, num_classes, layer_size, block_type)
         self.linear = nn.Linear(512, num_classes)
         self.end_idx = end_idx
     
