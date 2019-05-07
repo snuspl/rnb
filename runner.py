@@ -32,12 +32,12 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
         # load model instance using the given module path
         delimiter_idx = model_module_path.rfind('.')
         module_path = model_module_path[:delimiter_idx]
-        model_name = 'R2P1DLayerRunner' 
-        #model_name = model_module_path[delimiter_idx+1:] 
+        model_name = model_module_path[delimiter_idx+1:]
         module = __import__(module_path, fromlist=(model_name))
         model_class = getattr(module, model_name)
         model = model_class(device, start_idx, end_idx)
         input_shape = model.input_shape()
+        
         # first "warm up" the model with a few sample inferences
         tmp = torch.randn(*input_shape, dtype=torch.float32).cuda()
         for _ in range(3):

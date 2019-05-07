@@ -37,17 +37,16 @@ class R2P1DLayerRunner(RunnerModel):
     ckpt = torch.load(CKPT_PATH, map_location=device)
 
     state_dict = {}
-    print("Model.py @R2P1DLayerRunner ", start_idx, end_idx)  
     #filter out weights that are not used in this model  
     for i in range(start_idx, end_idx+1):
       layer = 'res2plus1d.conv{}'.format(i)
  
       tmp_state_dict = {k:v for k, v in ckpt['state_dict'].items() if
-                        k.startswith(layer)}
-      tmp_state_dict.update({k:v for k,v in ckpt['state_dict'].items() if 
-                             k.startswith('linear') and i == 5})
+                        k.startswith(layer) or
+                        k.startswith('linear')}
+      #tmp_state_dict.update({k:v for k,v in ckpt['state_dict'].items() if 
+      #                       k.startswith('linear') })
       state_dict.update(tmp_state_dict)
-#      print("STATE DICT", state_dict.keys()) 
     self.model.load_state_dict(state_dict) 
     
 
@@ -57,6 +56,7 @@ class R2P1DLayerRunner(RunnerModel):
                    3: (10, 64, 8, 56, 56),
                    4: (10, 128, 4, 28, 28),
                    5: (10, 256, 2, 14, 14) }
+    
     return input_dict[self.start_idx]
 
   def __call__(self, input):

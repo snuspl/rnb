@@ -191,11 +191,9 @@ if __name__ == '__main__':
   process_runner_list = []
   for step_idx, step in enumerate(pipeline):
     is_final_step = step_idx == len(pipeline) - 1
-    #print("RUNNER: ", step_idx, step)
     # we don't really have to put in None here,
     # but we do anyway to avoid handling corner cases below
     queues.append(Queue(args.queue_size) if not is_final_step else None)
-    #print("Queue length: ", len(queues), queues[step_idx].qsize()) 
     model = step['model']
     gpus = step['gpus']
     start_idx = step['start_index']
@@ -207,7 +205,6 @@ if __name__ == '__main__':
       # check the replica index of this particular runner, for this gpu
       # if this runner is the first, then give it index 0
       replica_idx = replica_dict.get(g, 0)
-     # print("REPLICA IDX: ", replica_idx, " Step index / step :", step_idx, step)
       
       # this step should create as many markers as the number of replicas for
       # the next step (== len(pipeline[step_idx+1]['gpus']));
