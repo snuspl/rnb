@@ -1,7 +1,7 @@
 /**
  * This file contains custom Python-C++ bridge interfaces for accessing CUPTI.
  * The interfaces can be accessed by running `from utils import cupti` in
- * Python, after building the cupti.so file (see build.sh).
+ * Python, after building the cupti.so file (see build_cupti.sh).
  */
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
