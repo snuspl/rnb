@@ -190,19 +190,20 @@ if __name__ == '__main__':
   for step_idx, step in enumerate(pipeline):
     is_final_step = step_idx == len(pipeline) - 1
 
-    # we don't really have to put in None here,
-    # but we do anyway to avoid handling corner cases below
-    queues.append(Queue(args.queue_size) if not is_final_step else None)
+    # Create a queue for the processes in this step to put results into.
+    # We don't need a queue for the last step, so we add a None placeholder.
+    output_queue = Queue(args.queue_size) if not is_final_step else None
+    queues.append(output_queue)
 
     model = step['model']
     gpus = step['gpus']
     replica_dict = {}
-    for j, g in enumerate(gpus):
-      is_first_instance = j == 0
+    for instance_idx, gpu in enumerate(gpus):
+      is_first_instance = instance_idx == 0
 
       # check the replica index of this particular runner, for this gpu
       # if this runner is the first, then give it index 0
-      replica_idx = replica_dict.get(g, 0)
+      replica_idx = replica_dict.get(gpu, 0)
 
       # this step should create as many markers as the number of replicas for
       # the next step (== len(pipeline[step_idx+1]['gpus']));
@@ -219,13 +220,13 @@ if __name__ == '__main__':
       process_runner = Process(target=runner,
                                args=(queues[-2], queues[-1],
                                      num_exit_markers, print_summary,
-                                     job_id, g, replica_idx,
+                                     job_id, gpu, replica_idx,
                                      global_inference_counter, args.videos,
                                      termination_flag, step_idx,
                                      sta_bar, fin_bar,
                                      model))
 
-      replica_dict[g] = replica_idx + 1
+      replica_dict[gpu] = replica_idx + 1
       process_runner_list.append(process_runner)
 
 

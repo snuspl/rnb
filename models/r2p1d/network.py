@@ -159,7 +159,6 @@ class R2Plus1DLayer12Net(nn.Module):
         self.conv1 = SpatioTemporalConv(3, 64, [3, 7, 7], stride=[1, 2, 2], padding=[1, 3, 3])
         self.conv2 = SpatioTemporalResLayer(64, 64, 3, layer_size, block_type=block_type)
 
-
     def forward(self, x):
         x = self.conv1(x)
         x = self.conv2(x)
@@ -176,7 +175,6 @@ class R2Plus1DLayer12Wrapper(nn.Module):
         super(R2Plus1DLayer12Wrapper, self).__init__()
         self.res2plus1d = R2Plus1DLayer12Net(layer_size, block_type)
 
-
     def forward(self, x):
         return self.res2plus1d(x)
 
@@ -189,7 +187,6 @@ class R2Plus1DLayer345Net(nn.Module):
         self.conv4 = SpatioTemporalResLayer(128, 256, 3, layer_sizes[1], block_type=block_type, downsample=True)
         self.conv5 = SpatioTemporalResLayer(256, 512, 3, layer_sizes[2], block_type=block_type, downsample=True)
         self.pool = nn.AdaptiveAvgPool3d(1)
-
 
     def forward(self, x):
         x = self.conv3(x)
