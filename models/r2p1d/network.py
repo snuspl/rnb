@@ -149,4 +149,61 @@ class R2Plus1DClassifier(nn.Module):
         x = self.res2plus1d(x)
         x = self.linear(x) 
 
-        return x   
+        return x
+
+
+class R2Plus1DLayer12Net(nn.Module):
+    """A shorter version of R2Plus1DNet, using only the first two layers."""
+    def __init__(self, layer_size, block_type=SpatioTemporalResBlock):
+        super(R2Plus1DLayer12Net, self).__init__()
+        self.conv1 = SpatioTemporalConv(3, 64, [3, 7, 7], stride=[1, 2, 2], padding=[1, 3, 3])
+        self.conv2 = SpatioTemporalResLayer(64, 64, 3, layer_size, block_type=block_type)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.conv2(x)
+        return x
+
+
+class R2Plus1DLayer12Wrapper(nn.Module):
+    """A thin wrapper for R2Plus1DLayer12Net without any additional features.
+
+    This wrapper is used solely for the purpose of reusing PyTorch weights
+    trained on R2Plus1DClassifier with minimum adjustments.
+    """
+    def __init__(self, layer_size, block_type=SpatioTemporalResBlock):
+        super(R2Plus1DLayer12Wrapper, self).__init__()
+        self.res2plus1d = R2Plus1DLayer12Net(layer_size, block_type)
+
+    def forward(self, x):
+        return self.res2plus1d(x)
+
+
+class R2Plus1DLayer345Net(nn.Module):
+    """A shorter version of R2Plus1DNet, using only the last three layers."""
+    def __init__(self, layer_sizes, block_type=SpatioTemporalResBlock):
+        super(R2Plus1DLayer345Net, self).__init__()
+        self.conv3 = SpatioTemporalResLayer(64, 128, 3, layer_sizes[0], block_type=block_type, downsample=True)
+        self.conv4 = SpatioTemporalResLayer(128, 256, 3, layer_sizes[1], block_type=block_type, downsample=True)
+        self.conv5 = SpatioTemporalResLayer(256, 512, 3, layer_sizes[2], block_type=block_type, downsample=True)
+        self.pool = nn.AdaptiveAvgPool3d(1)
+
+    def forward(self, x):
+        x = self.conv3(x)
+        x = self.conv4(x)
+        x = self.conv5(x)
+        x = self.pool(x)
+        return x.view(-1, 512)
+
+
+class R2Plus1DLayer345Wrapper(nn.Module):
+    """Wrapper for R2Plus1DLayer345Net that adds a fc classification layer."""
+    def __init__(self, num_classes, layer_sizes, block_type=SpatioTemporalResBlock):
+        super(R2Plus1DLayer345Wrapper, self).__init__()
+        self.res2plus1d = R2Plus1DLayer345Net(layer_sizes, block_type)
+        self.linear = nn.Linear(512, num_classes)
+
+    def forward(self, x):
+        x = self.res2plus1d(x)
+        x = self.linear(x) 
+        return x
