@@ -2,8 +2,8 @@ import torch
 
 from models.r2p1d.network import R2Plus1DClassifier, SpatioTemporalResBlock
 from models.r2p1d.network import R2Plus1DLayerWrapper
-#from models.r2p1d.network import R2Plus1DLayer12Wrapper
-#from models.r2p1d.network import R2Plus1DLayer345Wrapper
+from models.r2p1d.network import R2Plus1DLayer12Wrapper
+from models.r2p1d.network import R2Plus1DLayer345Wrapper
 from runner_model import RunnerModel
 
 

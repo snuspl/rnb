@@ -1,20 +1,17 @@
-"""Basic client implementation for the video analytics inference benchmark.
+"""Client implementations for the video analytics inference benchmark.
 
-Reads video names from a hard-coded file path and sends them to the filename
-queue, one at a time. The interval time between enqueues is sampled from an
-exponential distribution, to model video inference queries as a Poisson process.
+The Client simulates creating inference requests, assuming that
+videos are available on the server. We can evaluate different workload
+characteristics by implementing different clients; for example, we have poisson_client
+that generates requests for a single video at a time with random intervals, and
+bulk_client that generates requests for all videos at once.
 """
-def client(filename_queue, beta, num_loaders, termination_flag,
-           sta_bar, fin_bar):
+def load_videos():
+  """Helper function that reads video names from a hard-coded file path."""
   # PyTorch seems to have an issue with sharing modules between
   # multiple processes, so we just do the imports here and
   # not at the top of the file
   import os
-  import time
-  from numpy.random import exponential
-  from queue import Full
-  from control import TerminationFlag
-  from rnb_logging import TimeCard
 
   # file directory is assumed to be like:
   # root/
@@ -35,7 +32,23 @@ def client(filename_queue, beta, num_loaders, termination_flag,
 
   if len(videos) <= 0:
     raise Exception('No video available.')
- 
+  return videos
+
+def poisson_client(filename_queue, beta, num_loaders, termination_flag,
+                   sta_bar, fin_bar):
+  """Sends loaded video to the filename queue, one at a time.
+
+  The interval time between enqueues is sampled from an exponential distribution, 
+  to model video inference queries as a Poisson process.
+  """
+  import time
+  from numpy.random import exponential
+  from queue import Full
+  from control import TerminationFlag
+  from rnb_logging import TimeCard
+
+  videos = load_videos()
+
   sta_bar.wait()
   
   video_idx = 0
@@ -67,5 +80,51 @@ def client(filename_queue, beta, num_loaders, termination_flag,
     # the loaders will not be blocked at queue.get() and eventually exit
     # on their own
     pass
-  
+
+  fin_bar.wait()
+
+def bulk_client(filename_queue, num_loaders, num_videos, termination_flag,
+                sta_bar, fin_bar):
+  """Sends videos to the filename queue in bulk, as many as specified by the argument num_videos.
+
+  This implementation is mainly for measuring maximum throughput where latency is not a primary metric. 
+  """
+  import time
+  from queue import Full
+  from control import TerminationFlag
+  from rnb_logging import TimeCard
+
+  videos = load_videos()
+
+  sta_bar.wait()
+
+  video_count = 0
+  while video_count < num_videos:
+    # come back to the front of the list if we're at the end
+    video = videos[video_count % len(videos)]
+    video_count += 1
+
+    # create TimeCard instance to measure the time of key events
+    time_card = TimeCard()
+    time_card.record('enqueue_filename')
+
+    try:
+      filename_queue.put_nowait((video, time_card))
+    except Full:
+      print('[WARNING] Filename queue is full. Aborting...')
+      termination_flag.value = TerminationFlag.FILENAME_QUEUE_FULL
+      break
+
+  # mark the end of the input stream
+  # the loaders should exit by themselves, but we enqueue these markers just in
+  # case some loader is waiting on the queue
+  try:
+    for _ in range(num_loaders):
+      filename_queue.put_nowait(None)
+  except Full:
+    # if the queue is full, then we don't have to do anything because
+    # the loaders will not be blocked at queue.get() and eventually exit
+    # on their own
+    pass
+
   fin_bar.wait()

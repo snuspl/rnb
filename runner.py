@@ -46,8 +46,8 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
         del tmp
 
 
-        if output_queue is None:
-          # this is the final step
+        is_final_step = output_queue is None
+        if is_final_step:
           # collect incoming time measurements for later logging
           time_card_summary = TimeCardSummary()
 
@@ -70,8 +70,7 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
           time_card.record('inference%d_finish' % step_idx)
 
 
-          if output_queue is None:
-            # this is the final step
+          if is_final_step:
             # increment the inference counter
             with global_inference_counter.get_lock():
               global_inference_counter.value += 1
@@ -99,8 +98,7 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
 
 
         # the termination flag has been raised
-        if output_queue is not None:
-          # this is NOT the final step
+        if not is_final_step:
           # mark the end of the input stream
           try:
             for _ in range(num_exit_markers):
@@ -110,9 +108,7 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
 
   fin_bar.wait()
 
-  if output_queue is None:
-    # this is the final step
-
+  if is_final_step:
     # write statistics AFTER the barrier so that
     # throughput is not affected by unnecessary file I/O
     with open(logname(job_id, g_idx, r_idx), 'w') as f:

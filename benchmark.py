@@ -113,7 +113,7 @@ if __name__ == '__main__':
   # change these if you want to use different client/loader/runner impls
   from rnb_logging import logmeta, logroot
   from control import TerminationFlag
-  from client import client
+  from client import *
   from r2p1d_loader import loader
   from runner import runner
 
@@ -168,15 +168,27 @@ if __name__ == '__main__':
   # any process can alter this value to broadcast a termination signal
   termination_flag = Value('i', TerminationFlag.UNSET)
 
-  # queue between client and loader
-  filename_queue = Queue(args.queue_size)
-  # queue between loader and runner
-  frame_queue = Queue(args.queue_size)
+  # size of queues, which should be large enough to accomodate videos without waiting
+  # (mean_interval_ms = 0 is a special case where all videos are put in queues at once)
+  queue_size = args.queue_size if args.mean_interval_ms > 0 else args.videos + num_runners + 1
 
-  process_client = Process(target=client,
-                           args=(filename_queue, args.mean_interval_ms,
-                                 args.loaders, termination_flag,
-                                 sta_bar, fin_bar))
+  # queue between client and loader
+  filename_queue = Queue(queue_size)
+  # queue between loader and runner
+  frame_queue = Queue(queue_size)
+
+  # We use different client implementations for different mean intervals
+  if args.mean_interval_ms > 0:
+    client_impl = poisson_client
+    client_args = (filename_queue, args.mean_interval_ms,
+                   args.loaders, termination_flag,
+                   sta_bar, fin_bar)
+  else:
+    client_impl = bulk_client
+    client_args = (filename_queue, args.loaders, args.videos, termination_flag,
+                   sta_bar, fin_bar)
+  process_client = Process(target=client_impl,
+                           args=client_args)
 
   process_loader_list = [Process(target=loader,
                                  args=(filename_queue, frame_queue,
@@ -191,21 +203,24 @@ if __name__ == '__main__':
   process_runner_list = []
   for step_idx, step in enumerate(pipeline):
     is_final_step = step_idx == len(pipeline) - 1
-    # we don't really have to put in None here,
-    # but we do anyway to avoid handling corner cases below
-    queues.append(Queue(args.queue_size) if not is_final_step else None)
+
+    # Create a queue for the processes in this step to put results into.
+    # We don't need a queue for the last step, so we add a None placeholder.
+    output_queue = Queue(queue_size) if not is_final_step else None
+    queues.append(output_queue)
+
     model = step['model']
     gpus = step['gpus']
     start_idx = step['start_index']
     end_idx = step['end_index']
     replica_dict = {}
-    for j, g in enumerate(gpus):
-      is_first_instance = j == 0
+    for instance_idx, gpu in enumerate(gpus):
+      is_first_instance = instance_idx == 0
 
       # check the replica index of this particular runner, for this gpu
       # if this runner is the first, then give it index 0
-      replica_idx = replica_dict.get(g, 0)
-      
+      replica_idx = replica_dict.get(gpu, 0)
+
       # this step should create as many markers as the number of replicas for
       # the next step (== len(pipeline[step_idx+1]['gpus']));
       # the first instance creates all markers, other instances do nothing
@@ -221,14 +236,14 @@ if __name__ == '__main__':
       process_runner = Process(target=runner,
                                args=(queues[-2], queues[-1],
                                      num_exit_markers, print_summary,
-                                     job_id, g, replica_idx,
+                                     job_id, gpu, replica_idx,
                                      global_inference_counter, args.videos,
                                      termination_flag, step_idx,
                                      start_idx, end_idx,
                                      sta_bar, fin_bar,
                                      model))
 
-      replica_dict[g] = replica_idx + 1
+      replica_dict[gpu] = replica_idx + 1
       process_runner_list.append(process_runner)
 
 
