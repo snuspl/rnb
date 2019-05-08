@@ -111,7 +111,7 @@ if __name__ == '__main__':
   # change these if you want to use different client/loader/runner impls
   from rnb_logging import logmeta, logroot
   from control import TerminationFlag
-  from client import client
+  from client import *
   from r2p1d_loader import loader
   from runner import runner
 
@@ -166,15 +166,27 @@ if __name__ == '__main__':
   # any process can alter this value to broadcast a termination signal
   termination_flag = Value('i', TerminationFlag.UNSET)
 
-  # queue between client and loader
-  filename_queue = Queue(args.queue_size)
-  # queue between loader and runner
-  frame_queue = Queue(args.queue_size)
+  # size of queues, which should be large enough to accomodate videos without waiting
+  # (mean_interval_ms = 0 is a special case where all videos are put in queues at once)
+  queue_size = args.queue_size if args.mean_interval_ms > 0 else args.videos + num_runners + 1
 
-  process_client = Process(target=client,
-                           args=(filename_queue, args.mean_interval_ms,
-                                 args.loaders, termination_flag,
-                                 sta_bar, fin_bar))
+  # queue between client and loader
+  filename_queue = Queue(queue_size)
+  # queue between loader and runner
+  frame_queue = Queue(queue_size)
+
+  # We use different client implementations for different mean intervals
+  if args.mean_interval_ms > 0:
+    client_impl = poisson_client
+    client_args = (filename_queue, args.mean_interval_ms,
+                   args.loaders, termination_flag,
+                   sta_bar, fin_bar)
+  else:
+    client_impl = bulk_client
+    client_args = (filename_queue, args.loaders, args.videos, termination_flag,
+                   sta_bar, fin_bar)
+  process_client = Process(target=client_impl,
+                           args=client_args)
 
   process_loader_list = [Process(target=loader,
                                  args=(filename_queue, frame_queue,
@@ -192,7 +204,7 @@ if __name__ == '__main__':
 
     # Create a queue for the processes in this step to put results into.
     # We don't need a queue for the last step, so we add a None placeholder.
-    output_queue = Queue(args.queue_size) if not is_final_step else None
+    output_queue = Queue(queue_size) if not is_final_step else None
     queues.append(output_queue)
 
     model = step['model']
