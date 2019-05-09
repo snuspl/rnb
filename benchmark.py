@@ -125,7 +125,7 @@ if __name__ == '__main__':
                       type=positive_int, default=500)
   parser.add_argument('-c', '--config_file_path',
                       help='File path of the pipeline configuration file',
-                      type=str, default='config/r2p1d-general.json')
+                      type=str, default='config/r2p1d-whole.json')
   args = parser.parse_args()
   print('Args:', args)
   
