@@ -1,6 +1,7 @@
 """Taken as is from https://github.com/irhumshafkat/R2Plus1D-PyTorch/blob/master/network.py with a slight change in the imports.
 """
 
+import sys
 import torch.nn as nn
 from torch.nn.modules.utils import _triple
 
@@ -128,6 +129,7 @@ class R2Plus1DNet(nn.Module):
         
         return x.view(-1, 512)
 
+
 class R2Plus1DClassifier(nn.Module):
     r"""Forms a complete ResNet classifier producing vectors of size num_classes, by initializng 5 layers, 
     with the number of blocks in each layer set by layer_sizes, and by performing a global average pool
@@ -151,58 +153,63 @@ class R2Plus1DClassifier(nn.Module):
 
         return x
 
+
 class R2Plus1DLayerNet(nn.Module):
-    def __init__(self, start_idx, end_idx, num_classes, layer_size=2, block_type=SpatioTemporalResBlock):
+    """Instantiate only the necessary layers of R(2+1)D model. 
+
+    start_idx and end_idx are assumed to be 1-indexed and not 0-indexed.
+    """
+    def __init__(self, start_idx, end_idx, num_classes, layer_sizes, block_type=SpatioTemporalResBlock):
         super(R2Plus1DLayerNet, self).__init__()
         
-        self.start_idx = start_idx
         self.end_idx = end_idx
-        layer_idx = [x for x in range(start_idx, end_idx+1)]
-        self.layer_dict = {}
-        for layer in layer_idx:
+        self.layer_dict = []
+        for layer in range(start_idx, end_idx+1):
             if layer == 1:
                 self.conv1 = SpatioTemporalConv(3, 64, [3, 7, 7], stride=[1, 2, 2], padding=[1, 3, 3])
-                self.layer_dict[1] = [self.conv1]
+                self.layer_dict.append(self.conv1)
             elif layer == 2:
-                self.conv2 = SpatioTemporalResLayer(64, 64, 3, layer_size, block_type=block_type)
-                self.layer_dict[2] = [self.conv2]
+                self.conv2 = SpatioTemporalResLayer(64, 64, 3, layer_sizes[0], block_type=block_type)
+                self.layer_dict.append(self.conv2)
             elif layer == 3:
-                self.conv3 = SpatioTemporalResLayer(64, 128, 3, layer_size, block_type=block_type, downsample=True)
-                self.layer_dict[3] = [self.conv3]
+                self.conv3 = SpatioTemporalResLayer(64, 128, 3, layer_sizes[1], block_type=block_type, downsample=True)
+                self.layer_dict.append(self.conv3)
             elif layer == 4: 
-                self.conv4 = SpatioTemporalResLayer(128, 256, 3, layer_size, block_type=block_type, downsample=True)
-                self.layer_dict[4] = [self.conv4]
+                self.conv4 = SpatioTemporalResLayer(128, 256, 3, layer_sizes[2], block_type=block_type, downsample=True)
+                self.layer_dict.append(self.conv4)
             elif layer == 5: 
-                self.conv5 = SpatioTemporalResLayer(256, 512, 3, layer_size, block_type=block_type, downsample=True)
+                self.conv5 = SpatioTemporalResLayer(256, 512, 3, layer_sizes[3], block_type=block_type, downsample=True)
                 self.pool = nn.AdaptiveAvgPool3d(1)
-                self.layer_dict[5] = [self.conv5, self.pool]
+                self.layer_dict.extend([self.conv5, self.pool])
             else:
-                print("[WARNING] Wrong Layer Index!")
-                import sys
+                print('[WARNING] Wrong Layer Index!')
                 sys.exit()
     
     def forward(self, x):
-        model_layer = []
-        for i in range(self.start_idx, self.end_idx+1):
-            model_layer.extend(self.layer_dict[i])
-        
-        for layer in model_layer:
+        for layer in self.layer_dict:
             x = layer(x) 
         
         return x.view(-1, 512) if self.end_idx == 5 else x  
         
 
 class R2Plus1DLayerWrapper(nn.Module):
-    def __init__(self, start_idx, end_idx, num_classes, layer_size=2, block_type=SpatioTemporalResBlock):
+    """A thin wrapper for R2Plus1DLayerNet without any additional features. 
+
+    This wrapper resuses PyTorch weights and adds a fc classification layer
+    only if the last layer is included in the network for execution. 
+    """
+    def __init__(self, start_idx, end_idx, num_classes, layer_sizes, block_type=SpatioTemporalResBlock):
         super(R2Plus1DLayerWrapper, self).__init__()
         
-        self.res2plus1d = R2Plus1DLayerNet(start_idx, end_idx, num_classes, layer_size, block_type)
-        self.linear = nn.Linear(512, num_classes)
+        self.res2plus1d = R2Plus1DLayerNet(start_idx, end_idx, num_classes, layer_sizes, block_type)
         self.end_idx = end_idx
+        if end_idx == 5:
+          self.linear = nn.Linear(512, num_classes)
     
     def forward(self, x):
         x = self.res2plus1d(x)
-        return self.linear(x) if self.end_idx == 5 else x 
+        return self.linear(x) if self.end_idx == 5 else x
+
 
 class R2Plus1DLayer12Net(nn.Module):
     """A shorter version of R2Plus1DNet, using only the first two layers."""

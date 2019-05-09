@@ -45,16 +45,9 @@ def sanity_check(args):
       assert isinstance(step, dict)
       assert isinstance(step['model'], str)
       assert isinstance(step['gpus'], list)
-      assert isinstance(step['start_index'], int)
-      assert isinstance(step['end_index'], int)
       for gpu in step['gpus']:
         assert isinstance(gpu, int)
         logical_gpus_to_use.add(gpu)
-
-      # this limit needs to be adjusted if we expect keys other than
-      # 'model', 'gpus', 'start_index', 'end_index'
-      if len(step) > 4:
-        print('[WARNING] Pipeline configuration contains unused keys.')
 
   except Exception as err:
     print('[ERROR] Malformed pipeline configuration file. See below:')
@@ -132,7 +125,7 @@ if __name__ == '__main__':
                       type=positive_int, default=500)
   parser.add_argument('-c', '--config_file_path',
                       help='File path of the pipeline configuration file',
-                      type=str, default='config/r2p1d-split2.json')
+                      type=str, default='config/r2p1d-general.json')
   args = parser.parse_args()
   print('Args:', args)
   
@@ -211,8 +204,10 @@ if __name__ == '__main__':
 
     model = step['model']
     gpus = step['gpus']
-    start_idx = step['start_index']
-    end_idx = step['end_index']
+    
+    # Only retain information other than 'model' and 'gpus' such as 'indices of network layers'
+    [step.pop(x) for x in ['model', 'gpus']] 
+    
     replica_dict = {}
     for instance_idx, gpu in enumerate(gpus):
       is_first_instance = instance_idx == 0
@@ -239,9 +234,9 @@ if __name__ == '__main__':
                                      job_id, gpu, replica_idx,
                                      global_inference_counter, args.videos,
                                      termination_flag, step_idx,
-                                     start_idx, end_idx,
                                      sta_bar, fin_bar,
-                                     model))
+                                     model),
+                               kwargs=step)
 
       replica_dict[gpu] = replica_idx + 1
       process_runner_list.append(process_runner)
