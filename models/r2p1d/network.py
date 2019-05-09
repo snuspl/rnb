@@ -129,7 +129,6 @@ class R2Plus1DNet(nn.Module):
         
         return x.view(-1, 512)
 
-
 class R2Plus1DClassifier(nn.Module):
     r"""Forms a complete ResNet classifier producing vectors of size num_classes, by initializng 5 layers, 
     with the number of blocks in each layer set by layer_sizes, and by performing a global average pool
