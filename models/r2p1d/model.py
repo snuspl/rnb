@@ -1,4 +1,5 @@
 import torch
+import sys 
 
 from models.r2p1d.network import R2Plus1DClassifier, SpatioTemporalResBlock
 from models.r2p1d.network import R2Plus1DLayerWrapper
@@ -28,29 +29,38 @@ class R2P1DRunner(RunnerModel):
     return self.model(input)
 
 class R2P1DLayerRunner(RunnerModel):
-  """RunnerModel impl of the R(2+1)D model for RnB benchmark runners.
+  """RunnerModel that can create any connected subset of the R(2+1)D model for RnB benchmark runners.
   
   start_index and end_index are assumed to be 1-indexed. 
   """
-  def __init__(self, device, start_index=1, end_index=5, num_classes=400, layer_sizes=[2, 2, 2, 2], block_type=SpatioTemporalResBlock):
+  def __init__(self, device, start_index=1, end_index=5, num_classes=400, block_type=SpatioTemporalResBlock):
     super(R2P1DLayerRunner, self).__init__(device)
     
-    self.start_index = start_index
-    self.model = R2Plus1DLayerWrapper(start_index, end_index, num_classes, layer_sizes, block_type).to(device)
-    ckpt = torch.load(CKPT_PATH, map_location=device)
+    if start_index < 1:
+      print('[ERROR] Wrong layer index for the starting layer! The start_index (%d) should be more than or equal to 0.' % start_index) 
+      sys.exit()
+    
+    elif end_index > 5:  
+      print('[ERROR] Wrong layer index for the ending layer! The end_index (%d) should be more than or equal to 0.' % end_index)
+      sys.exit()
+    
+    else:
+      layer_sizes = [2 for x in range(start_index, end_index+1)]
+      self.start_index = start_index
+      self.model = R2Plus1DLayerWrapper(start_index, end_index, num_classes, layer_sizes, block_type).to(device)
+      ckpt = torch.load(CKPT_PATH, map_location=device)
 
-    state_dict = {}
-    # filter out weights that are not used in this model  
-    for i in range(start_index, end_index+1):
-      layer = 'res2plus1d.conv{}'.format(i)
- 
-      tmp_state_dict = {k:v for k, v in ckpt['state_dict'].items() if
-                        k.startswith(layer)}
-      tmp_state_dict.update({k:v for k, v in ckpt['state_dict'].items() if
-                        k.startswith('linear') and end_index == 5})
-
-      state_dict.update(tmp_state_dict)
-    self.model.load_state_dict(state_dict) 
+      state_dict = {}
+      # filter out weights that are not used in this model  
+      for i in range(start_index, end_index+1):
+        layer = 'res2plus1d.conv{}'.format(i)
+   
+        state_dict.update({k:v for k, v in ckpt['state_dict'].items() if
+                          k.startswith(layer)})
+      
+      state_dict.update({k:v for k, v in ckpt['state_dict'].items() if
+                          k.startswith('linear') and end_index == 5})
+      self.model.load_state_dict(state_dict) 
     
 
   def input_shape(self):

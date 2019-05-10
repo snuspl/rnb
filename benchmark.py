@@ -202,11 +202,9 @@ if __name__ == '__main__':
     output_queue = Queue(queue_size) if not is_final_step else None
     queues.append(output_queue)
 
-    model = step['model']
-    gpus = step['gpus']
-    
-    # Only retain information other than 'model' and 'gpus' such as 'indices of network layers'
-    [step.pop(x) for x in ['model', 'gpus']] 
+    # We assume that all entries except 'model' and 'gpus' are model-specific parameters that need to be passed to the runner
+    model = step.pop('model')
+    gpus = step.pop('gpus')
     
     replica_dict = {}
     for instance_idx, gpu in enumerate(gpus):
