@@ -1,17 +1,21 @@
-"""Simple test for demonstrating KernelTracker from the CUPTI bridge."""
+"""Simple test for retrieving kernel timestamps using the CUPTI bridge."""
 import torch
 
-from torch import nn
+from torch.nn import Conv2d
 from utils import cupti
 
 device = torch.device('cuda:0')
-tensor = torch.randn(10, 2000, dtype=torch.float32, device=device)
+# first layer of
+# https://github.com/pytorch/vision/blob/master/torchvision/models/alexnet.py
+model = Conv2d(3, 64, kernel_size=11, stride=4, padding=2).to(device)
 
-kernel_tracker = cupti.KernelTracker()
-layer = nn.Linear(2000, 100, bias=True).to(device)
+# batch size 4
+tensor = torch.randn(4, 3, 224, 224, dtype=torch.float32, device=device)
 
-result = layer(tensor)
+cupti.initialize()
+results = model(tensor)
+torch.cuda.synchronize()
+cupti.flush()
 
-for kernel in kernel_tracker.get_kernel_names():
-  print(kernel)
-kernel_tracker.reset()
+for name, time_start, time_end in cupti.report():
+  print(name, time_start, time_end)
