@@ -33,6 +33,12 @@ class R2P1DLayerRunner(RunnerModel):
   
   start_index and end_index are assumed to be 1-indexed. 
   """
+  input_dict = { 1: (10, 3, 8, 112, 112), 
+                 2: (10, 64, 8, 56, 56),
+                 3: (10, 64, 8, 56, 56),
+                 4: (10, 128, 4, 28, 28),
+                 5: (10, 256, 2, 14, 14) }
+
   def __init__(self, device, start_index=1, end_index=5, num_classes=400, block_type=SpatioTemporalResBlock):
     super(R2P1DLayerRunner, self).__init__(device)
     
@@ -62,15 +68,8 @@ class R2P1DLayerRunner(RunnerModel):
                           k.startswith('linear') and end_index == 5})
       self.model.load_state_dict(state_dict) 
     
-
   def input_shape(self):
-    input_dict = { 1: (10, 3, 8, 112, 112), 
-                   2: (10, 64, 8, 56, 56),
-                   3: (10, 64, 8, 56, 56),
-                   4: (10, 128, 4, 28, 28),
-                   5: (10, 256, 2, 14, 14) }
-    
-    return input_dict[self.start_index]
+    return self.input_dict[self.start_index]
 
   def __call__(self, input):
     return self.model(input)
