@@ -35,6 +35,7 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
         model_name = model_module_path[delimiter_idx+1:]
         module = __import__(module_path, fromlist=(model_name))
         model_class = getattr(module, model_name)
+        
         model = model_class(device, **model_kwargs)
         input_shape = model.input_shape()
 

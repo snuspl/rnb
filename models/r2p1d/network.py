@@ -1,8 +1,6 @@
 """Taken as is from https://github.com/irhumshafkat/R2Plus1D-PyTorch/blob/master/network.py with a slight change in the imports.
 """
 
-import torch
-import sys
 import torch.nn as nn
 from torch.nn.modules.utils import _triple
 
@@ -163,19 +161,19 @@ class R2Plus1DLayerNet(nn.Module):
         super(R2Plus1DLayerNet, self).__init__()
         
         self.end_idx = end_idx
-        layer_indices = [x for x in range(start_idx, end_idx+1)]
+        layer_indices = range(start_idx, end_idx+1)
         self.layer_list = []
-        for i in range(len(layer_indices)):
-            if layer_indices[i] == 1:
+        for i, layer_index in enumerate(layer_indices):
+            if layer_index == 1:
                 self.conv1 = SpatioTemporalConv(3, 64, [3, 7, 7], stride=[1, 2, 2], padding=[1, 3, 3])
                 self.layer_list.append(self.conv1)
-            elif layer_indices[i] == 2:
+            elif layer_index == 2:
                 self.conv2 = SpatioTemporalResLayer(64, 64, 3, layer_sizes[i], block_type=block_type)
                 self.layer_list.append(self.conv2)
-            elif layer_indices[i] == 3:
+            elif layer_index == 3:
                 self.conv3 = SpatioTemporalResLayer(64, 128, 3, layer_sizes[i], block_type=block_type, downsample=True)
                 self.layer_list.append(self.conv3)
-            elif layer_indices[i] == 4: 
+            elif layer_index == 4: 
                 self.conv4 = SpatioTemporalResLayer(128, 256, 3, layer_sizes[i], block_type=block_type, downsample=True)
                 self.layer_list.append(self.conv4)
             else: # layer == 5 
@@ -187,6 +185,7 @@ class R2Plus1DLayerNet(nn.Module):
         for layer in self.layer_list:
             x = layer(x) 
         return x.view(-1, 512) if self.end_idx == 5 else x  
+
 
 class R2Plus1DLayerWrapper(nn.Module):
     """A thin wrapper for R2Plus1DLayerNet with an addition of fc classification layer. 
