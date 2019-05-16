@@ -43,7 +43,7 @@ class R2P1DLayerRunner(RunnerModel):
                  4: (10, 128, 4, 28, 28),
                  5: (10, 256, 2, 14, 14) }
 
-  def __init__(self, device, start_index=1, end_index=5, num_classes=400, block_type=SpatioTemporalResBlock):
+  def __init__(self, device, start_index=1, end_index=5, num_classes=400, layer_sizes=None, block_type=SpatioTemporalResBlock):
     super(R2P1DLayerRunner, self).__init__(device)
     
     if start_index < 1:
@@ -54,7 +54,8 @@ class R2P1DLayerRunner(RunnerModel):
       print('[ERROR] Wrong layer index for the ending layer! The end_index (%d) should be less than or equal to 5.' % end_index)
       sys.exit()
     
-    layer_sizes = [2 for x in range(start_index, end_index+1)]
+    if layer_sizes = None:
+      layer_sizes = [2 for _ in range(start_index, end_index+1)]
     self.start_index = start_index
     self.model = R2Plus1DLayerWrapper(start_index, end_index, num_classes, layer_sizes, block_type).to(device)
     ckpt = torch.load(CKPT_PATH, map_location=device)
