@@ -9,8 +9,8 @@ device = torch.device('cuda:0')
 # https://github.com/pytorch/vision/blob/master/torchvision/models/alexnet.py
 model = Conv2d(3, 64, kernel_size=11, stride=4, padding=2).to(device)
 
-# batch size 4
-tensor = torch.randn(4, 3, 224, 224, dtype=torch.float32, device=device)
+batch_size = 4
+tensor = torch.randn(batch_size, 3, 224, 224, dtype=torch.float32, device=device)
 
 cupti.initialize()
 results = model(tensor)
