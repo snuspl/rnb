@@ -54,7 +54,7 @@ class R2P1DLayerRunner(RunnerModel):
       print('[ERROR] Wrong layer index for the ending layer! The end_index (%d) should be less than or equal to 5.' % end_index)
       sys.exit()
     
-    if layer_sizes = None:
+    if layer_sizes is None:
       layer_sizes = [2 for _ in range(start_index, end_index+1)]
     self.start_index = start_index
     self.model = R2Plus1DLayerWrapper(start_index, end_index, num_classes, layer_sizes, block_type).to(device)
