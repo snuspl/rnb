@@ -49,11 +49,6 @@ def sanity_check(args):
         assert isinstance(gpu, int)
         logical_gpus_to_use.add(gpu)
 
-      # this limit needs to be adjusted if we expect keys other than
-      # 'model' and 'gpus'
-      if len(step) > 2:
-        print('[WARNING] Pipeline configuration contains unused keys.')
-
   except Exception as err:
     print('[ERROR] Malformed pipeline configuration file. See below:')
     raise err
@@ -207,8 +202,10 @@ if __name__ == '__main__':
     output_queue = Queue(queue_size) if not is_final_step else None
     queues.append(output_queue)
 
-    model = step['model']
-    gpus = step['gpus']
+    # We assume that all entries except 'model' and 'gpus' are model-specific parameters that need to be passed to the runner
+    model = step.pop('model')
+    gpus = step.pop('gpus')
+    
     replica_dict = {}
     for instance_idx, gpu in enumerate(gpus):
       is_first_instance = instance_idx == 0
@@ -236,7 +233,8 @@ if __name__ == '__main__':
                                      global_inference_counter, args.videos,
                                      termination_flag, step_idx,
                                      sta_bar, fin_bar,
-                                     model))
+                                     model),
+                               kwargs=step)
 
       replica_dict[gpu] = replica_idx + 1
       process_runner_list.append(process_runner)

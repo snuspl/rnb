@@ -4,7 +4,8 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
            job_id, g_idx, r_idx, global_inference_counter, num_videos,
            termination_flag, step_idx,
            sta_bar, fin_bar,
-           model_module_path):
+           model_module_path,
+           **model_kwargs):
   # PyTorch seems to have an issue with sharing modules between
   # multiple processes, so we just do the imports here and
   # not at the top of the file
@@ -35,7 +36,7 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
         module = __import__(module_path, fromlist=(model_name))
         model_class = getattr(module, model_name)
 
-        model = model_class(device)
+        model = model_class(device, **model_kwargs)
         input_shape = model.input_shape()
 
         # first "warm up" the model with a few sample inferences

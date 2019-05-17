@@ -1,6 +1,8 @@
 import torch
+import sys 
 
 from models.r2p1d.network import R2Plus1DClassifier, SpatioTemporalResBlock
+from models.r2p1d.network import R2Plus1DLayerWrapper
 from models.r2p1d.network import R2Plus1DLayer12Wrapper
 from models.r2p1d.network import R2Plus1DLayer345Wrapper
 from runner_model import RunnerModel
@@ -26,6 +28,56 @@ class R2P1DRunner(RunnerModel):
   def __call__(self, input):
     return self.model(input)
 
+class R2P1DLayerRunner(RunnerModel):
+  """RunnerModel that can create any connected subset of the R(2+1)D model for RnB benchmark runners.
+  
+  start_index and end_index are assumed to be 1-indexed. 
+  """
+  # holds the expected tensor input shape for all 5 layers 
+  # the first layer expects an input shape of 
+  # (10 clips, 3 channels, 8 consecutive frames, 112 pixels for width, 112 pixels for height)
+  # input shape for the later layers change like the following as tensors propagate each layer
+  input_dict = { 1: (10, 3, 8, 112, 112), 
+                 2: (10, 64, 8, 56, 56),
+                 3: (10, 64, 8, 56, 56),
+                 4: (10, 128, 4, 28, 28),
+                 5: (10, 256, 2, 14, 14) }
+
+  def __init__(self, device, start_index=1, end_index=5, num_classes=400, layer_sizes=None, block_type=SpatioTemporalResBlock):
+    super(R2P1DLayerRunner, self).__init__(device)
+    
+    if start_index < 1:
+      print('[ERROR] Wrong layer index for the starting layer! The start_index (%d) should be more than or equal to 1.' % start_index) 
+      sys.exit()
+    
+    elif end_index > 5:  
+      print('[ERROR] Wrong layer index for the ending layer! The end_index (%d) should be less than or equal to 5.' % end_index)
+      sys.exit()
+    
+    if layer_sizes is None:
+      layer_sizes = [2 for _ in range(start_index, end_index+1)]
+    self.start_index = start_index
+    self.model = R2Plus1DLayerWrapper(start_index, end_index, num_classes, layer_sizes, block_type).to(device)
+    ckpt = torch.load(CKPT_PATH, map_location=device)
+
+    state_dict = {}
+    # filter out weights that are not used in this model  
+    for i in range(start_index, end_index+1):
+      layer = 'res2plus1d.conv%d' % i
+ 
+      state_dict.update({k:v for k, v in ckpt['state_dict'].items() if
+                         k.startswith(layer)})
+    
+    if end_index == 5:
+      state_dict.update({k:v for k, v in ckpt['state_dict'].items() if
+                         k.startswith('linear')})
+    self.model.load_state_dict(state_dict) 
+    
+  def input_shape(self):
+    return self.input_dict[self.start_index]
+
+  def __call__(self, input):
+    return self.model(input)
 
 class R2P1DLayer12Runner(RunnerModel):
   """RunnerModel impl for the first two layers of the R(2+1)D model."""
