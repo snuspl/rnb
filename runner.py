@@ -12,6 +12,7 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
   import numpy as np
   import torch
   from queue import Empty, Full
+  from tqdm import tqdm
   from rnb_logging import logname, TimeCardSummary
   from control import TerminationFlag
 
@@ -53,49 +54,50 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
           time_card_summary = TimeCardSummary()
 
         sta_bar.wait()
-
-        while termination_flag.value == TerminationFlag.UNSET:
-          tpl = input_queue.get()
-          if tpl is None:
-            break
-
-          tensor, time_card = tpl
-          time_card.record('runner%d_start' % step_idx)
-
-          if tensor.device != device:
-            tensor = tensor.to(device=device)
-          time_card.record('inference%d_start' % step_idx)
-
-          outputs = model(tensor)
-          stream.synchronize()
-          time_card.record('inference%d_finish' % step_idx)
-
-
-          if is_final_step:
-            # increment the inference counter
-            with global_inference_counter.get_lock():
-              global_inference_counter.value += 1
-
-              if global_inference_counter.value == num_videos:
-                print('Finished processing %d videos' % num_videos)
-                termination_flag.value = TerminationFlag.TARGET_NUM_VIDEOS_REACHED
-              elif global_inference_counter.value > num_videos:
-                # we've already reached our goal; abort immediately
-                break
-
-            time_card_summary.register(time_card)
-
-
-          else:
-            # this is NOT the final step
-            # pass on the intermediate tensor to the next step
-            try:
-              output_queue.put_nowait((outputs, time_card))
-            except Full:
-              print('[WARNING] Queue between runner step %d and %d is full. '
-                    'Aborting...' % (step_idx, step_idx+1))
-              termination_flag.value = TerminationFlag.FRAME_QUEUE_FULL
+        with tqdm(total=num_videos) as progress_bar:
+          while termination_flag.value == TerminationFlag.UNSET:
+            tpl = input_queue.get()
+            if tpl is None:
               break
+
+            tensor, time_card = tpl
+            time_card.record('runner%d_start' % step_idx)
+
+            if tensor.device != device:
+              tensor = tensor.to(device=device)
+            time_card.record('inference%d_start' % step_idx)
+
+            outputs = model(tensor)
+            stream.synchronize()
+            time_card.record('inference%d_finish' % step_idx)
+
+
+            if is_final_step:
+              # increment the inference counter
+              with global_inference_counter.get_lock():
+                global_inference_counter.value += 1
+                progress_bar.update(1)
+
+                if global_inference_counter.value == num_videos:
+                  print('Finished processing %d videos' % num_videos)
+                  termination_flag.value = TerminationFlag.TARGET_NUM_VIDEOS_REACHED
+                elif global_inference_counter.value > num_videos:
+                  # we've already reached our goal; abort immediately
+                  break
+
+              time_card_summary.register(time_card)
+
+
+            else:
+              # this is NOT the final step
+              # pass on the intermediate tensor to the next step
+              try:
+                output_queue.put_nowait((outputs, time_card))
+              except Full:
+                print('[WARNING] Queue between runner step %d and %d is full. '
+                      'Aborting...' % (step_idx, step_idx+1))
+                termination_flag.value = TerminationFlag.FRAME_QUEUE_FULL
+                break
 
 
         # the termination flag has been raised

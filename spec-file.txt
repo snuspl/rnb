@@ -79,3 +79,4 @@ https://repo.continuum.io/pkgs/main/linux-64/urllib3-1.23-py37_0.tar.bz2
 https://repo.continuum.io/pkgs/main/linux-64/wheel-0.32.2-py37_0.tar.bz2
 https://repo.continuum.io/pkgs/main/linux-64/xz-5.2.4-h14c3975_4.tar.bz2
 https://repo.continuum.io/pkgs/main/linux-64/zlib-1.2.11-ha838bed_2.tar.bz2
+https://repo.anaconda.com/pkgs/main/linux-64/tqdm-4.31.1-py37_1.tar.bz2
