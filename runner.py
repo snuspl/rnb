@@ -83,8 +83,9 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
 
               if print_summary:
                 new_counter_value = global_inference_counter.value
-                tqdm.update(new_counter_value - old_global_inference_counter_value)
-                old_global_inference_counter_value = new_counter_value
+                if new_counter_value > old_global_inference_counter_value:
+                  progress_bar.update(new_counter_value - old_global_inference_counter_value)
+                  old_global_inference_counter_value = new_counter_value
 
               if global_inference_counter.value == num_videos:
                 print('Finished processing %d videos' % num_videos)
@@ -130,7 +131,7 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
     NUM_SKIPS = 10
     if print_summary:
       time_card_summary.print_summary(NUM_SKIPS)
-      tqdm.close()
+      progress_bar.close()
 
   # We've observed cases where the loader processes do not exit until
   # all tensors spawned from the loaders are removed from scope (even if they
