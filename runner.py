@@ -12,6 +12,7 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
   import numpy as np
   import torch
   from queue import Empty, Full
+  from tqdm import tqdm
   from rnb_logging import logname, TimeCardSummary
   from control import TerminationFlag
 
@@ -54,6 +55,10 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
 
         sta_bar.wait()
 
+        if print_summary:
+          progress_bar = tqdm(total = num_videos)
+          old_global_inference_counter_value = 0
+
         while termination_flag.value == TerminationFlag.UNSET:
           tpl = input_queue.get()
           if tpl is None:
@@ -75,6 +80,12 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
             # increment the inference counter
             with global_inference_counter.get_lock():
               global_inference_counter.value += 1
+
+              if print_summary:
+                new_counter_value = global_inference_counter.value
+                if new_counter_value > old_global_inference_counter_value:
+                  progress_bar.update(new_counter_value - old_global_inference_counter_value)
+                  old_global_inference_counter_value = new_counter_value
 
               if global_inference_counter.value == num_videos:
                 print('Finished processing %d videos' % num_videos)
@@ -120,6 +131,7 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
     NUM_SKIPS = 10
     if print_summary:
       time_card_summary.print_summary(NUM_SKIPS)
+      progress_bar.close()
 
   # We've observed cases where the loader processes do not exit until
   # all tensors spawned from the loaders are removed from scope (even if they
