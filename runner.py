@@ -38,14 +38,6 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
         model_class = getattr(module, model_name)
 
         model = model_class(device, **model_kwargs)
-        input_shape = model.input_shape()
-
-        # first "warm up" the model with a few sample inferences
-        tmp = torch.randn(*input_shape, dtype=torch.float32).cuda()
-        for _ in range(3):
-          _ = model(tmp)
-          stream.synchronize()
-        del tmp
 
 
         is_final_step = output_queue is None
@@ -67,7 +59,7 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
           tensor, time_card = tpl
           time_card.record('runner%d_start' % step_idx)
 
-          if tensor.device != device:
+          if isinstance(tensor, torch.Tensor) and tensor.device != device:
             tensor = tensor.to(device=device)
           time_card.record('inference%d_start' % step_idx)
 

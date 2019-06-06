@@ -7,6 +7,9 @@ from models.r2p1d.network import R2Plus1DLayer12Wrapper
 from models.r2p1d.network import R2Plus1DLayer345Wrapper
 from runner_model import RunnerModel
 
+import nvvl
+from r2p1d_sampler import R2P1DSampler
+
 CKPT_PATH = '/cmsdata/ssd0/cmslab/Kinetics-400/ckpt/model_data.pth.tar'
 
 class R2P1DRunner(RunnerModel):
@@ -72,6 +75,14 @@ class R2P1DLayerRunner(RunnerModel):
       state_dict.update({k:v for k, v in ckpt['state_dict'].items() if
                          k.startswith('linear')})
     self.model.load_state_dict(state_dict) 
+
+
+    inp_shape = self.input_shape()
+    stream = torch.cuda.current_stream()
+    tmp = torch.randn(*inp_shape, dtype=torch.float32).cuda()
+    for _ in range(3):
+      _ = self.model(tmp)
+      stream.synchronize()
     
   def input_shape(self):
     return self.input_dict[self.start_index]
@@ -127,3 +138,33 @@ class R2P1DLayer345Runner(RunnerModel):
 
   def __call__(self, input):
     return self.model(input)
+
+
+class R2P1DLoader(RunnerModel):
+  def __init__(self, device):
+    self.loader = nvvl.RnBLoader(width=112, height=112,
+                                 consecutive_frames=8, device_id=device.index,
+                                 sampler=R2P1DSampler(clip_length=8))
+
+    samples = [
+        '/cmsdata/ssd0/cmslab/Kinetics-400/sparta/laughing/0gR5FP7HpZ4_000024_000034.mp4',
+        '/cmsdata/ssd0/cmslab/Kinetics-400/sparta/laughing/2WowmnRTyqY_000203_000213.mp4',
+        '/cmsdata/ssd0/cmslab/Kinetics-400/sparta/laughing/5GXEjJjgGcc_000058_000068.mp4',
+    ]
+
+    for sample in samples:
+      self.loader.loadfile(sample)
+    for frames in self.loader:
+      pass
+    self.loader.flush()
+
+
+  def __call__(self, input):
+    self.loader.loadfile(input)
+    for frames in self.loader:
+      pass
+    self.loader.flush()
+
+    frames = frames.float()
+    frames = frames.permute(0, 2, 1, 3, 4)
+    return frames

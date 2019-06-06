@@ -107,7 +107,6 @@ if __name__ == '__main__':
   from rnb_logging import logmeta, logroot
   from control import TerminationFlag
   from client import *
-  from r2p1d_loader import loader
   from runner import runner
 
   parser = argparse.ArgumentParser()
@@ -118,8 +117,6 @@ if __name__ == '__main__':
                       type=positive_int, default=1)
   parser.add_argument('-v', '--videos', help='Total number of videos to run',
                       type=positive_int, default=2000)
-  parser.add_argument('-l', '--loaders', help='Number of loader processes to spawn',
-                      type=positive_int, default=1)
   parser.add_argument('-qs', '--queue_size',
                       help='Maximum queue size for inter-process queues',
                       type=positive_int, default=500)
@@ -131,11 +128,10 @@ if __name__ == '__main__':
   
   sanity_check(args)
 
-  job_id = '%s-mi%d-b%d-v%d-l%d-qs%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
+  job_id = '%s-mi%d-b%d-v%d-qs%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
                                          args.mean_interval_ms,
                                          args.batch_size,
                                          args.videos,
-                                         args.loaders,
                                          args.queue_size)
 
   # do a quick pass through the pipeline to count the total number of runners
@@ -146,7 +142,7 @@ if __name__ == '__main__':
 
   # total num of processes
   # runners + loaders + one client + one main process (this one)
-  bar_total = num_runners + args.loaders + 2 
+  bar_total = num_runners + 2
   
   # barrier to ensure all processes start at the same time
   sta_bar = Barrier(bar_total)
@@ -167,32 +163,24 @@ if __name__ == '__main__':
 
   # queue between client and loader
   filename_queue = Queue(queue_size)
-  # queue between loader and runner
-  frame_queue = Queue(queue_size)
 
   # We use different client implementations for different mean intervals
   if args.mean_interval_ms > 0:
     client_impl = poisson_client
     client_args = (filename_queue, args.mean_interval_ms,
-                   args.loaders, termination_flag,
+                   num_runners_first_step, termination_flag,
                    sta_bar, fin_bar)
   else:
     client_impl = bulk_client
-    client_args = (filename_queue, args.loaders, args.videos, termination_flag,
+    client_args = (filename_queue, num_runners_first_step, args.videos, termination_flag,
                    sta_bar, fin_bar)
   process_client = Process(target=client_impl,
                            args=client_args)
 
-  process_loader_list = [Process(target=loader,
-                                 args=(filename_queue, frame_queue,
-                                       num_runners_first_step, l,
-                                       termination_flag,
-                                       sta_bar, fin_bar))
-                         for l in range(args.loaders)]
 
   # hold at least one reference for all queues
   # otherwise, a queue object may get destroyed before child processes start
-  queues = [frame_queue]
+  queues = [filename_queue]
   process_runner_list = []
   for step_idx, step in enumerate(pipeline):
     is_final_step = step_idx == len(pipeline) - 1
@@ -240,7 +228,7 @@ if __name__ == '__main__':
       process_runner_list.append(process_runner)
 
 
-  for p in [process_client] + process_loader_list + process_runner_list:
+  for p in [process_client] + process_runner_list:
     p.start()
 
   sta_bar.wait()
@@ -259,7 +247,7 @@ if __name__ == '__main__':
 
 
   print('Waiting for child processes to return...')
-  for p in [process_client] + process_loader_list + process_runner_list:
+  for p in [process_client] + process_runner_list:
     p.join()
   
 

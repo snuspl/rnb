@@ -1,19 +1,23 @@
 [
   {
+    "model": "models.r2p1d.model.R2P1DLoader",
+    "gpus": [0, 1]
+  },
+  {
     "model": "models.r2p1d.model.R2P1DLayerRunner",
-    "gpus": [0],
+    "gpus": [2, 3],
     "start_index": 1,
     "end_index": 2
   },
   {
     "model": "models.r2p1d.model.R2P1DLayerRunner",
-    "gpus": [1, 1],
+    "gpus": [4],
     "start_index": 3,
     "end_index": 4
   },
   {
     "model": "models.r2p1d.model.R2P1DLayerRunner",
-    "gpus": [1, 2],
+    "gpus": [5],
     "start_index": 5,
     "end_index": 5
   }
