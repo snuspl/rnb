@@ -168,3 +168,98 @@ class R2P1DLoader(RunnerModel):
     frames = frames.float()
     frames = frames.permute(0, 2, 1, 3, 4)
     return frames
+
+
+class R2P1D(RunnerModel):
+  input_dict = { 1: (10, 3, 8, 112, 112),
+                 2: (10, 64, 8, 56, 56),
+                 3: (10, 64, 8, 56, 56),
+                 4: (10, 128, 4, 28, 28),
+                 5: (10, 256, 2, 14, 14) }
+
+  def __init__(self, device, start_index=1, end_index=5, num_classes=400,
+               layer_sizes=None, block_type=SpatioTemporalResBlock):
+    super(R2P1D, self).__init__(device)
+
+    #############################################
+    ####### PREPARE NEURAL NETWORK RUNNER #######
+    #############################################
+    if start_index < 1:
+      print('[ERROR] Wrong layer index for the starting layer! '
+            'The start_index (%d) should be more than or equal to 1.'
+            % start_index)
+      sys.exit()
+
+    elif end_index > 5:
+      print('[ERROR] Wrong layer index for the ending layer! '
+            'The end_index (%d) should be less than or equal to 5.'
+            % end_index)
+      sys.exit()
+
+    if layer_sizes is None:
+      layer_sizes = [2 for _ in range(start_index, end_index+1)]
+    self.start_index = start_index
+    self.model = R2Plus1DLayerWrapper(start_index, end_index, num_classes,
+                                      layer_sizes, block_type).to(device)
+    ckpt = torch.load(CKPT_PATH, map_location=device)
+
+    state_dict = {}
+    # filter out weights that are not used in this model
+    for i in range(start_index, end_index+1):
+      layer = 'res2plus1d.conv%d' % i
+
+      state_dict.update({k:v for k, v in ckpt['state_dict'].items() if
+                         k.startswith(layer)})
+
+    if end_index == 5:
+      state_dict.update({k:v for k, v in ckpt['state_dict'].items() if
+                         k.startswith('linear')})
+    self.model.load_state_dict(state_dict)
+
+
+    #############################################
+    ####### PREPARE NEURAL NETWORK LOADER #######
+    #############################################
+    self.loader = nvvl.RnBLoader(width=112, height=112,
+                                 consecutive_frames=8, device_id=device.index,
+                                 sampler=R2P1DSampler(clip_length=8))
+
+
+    #############################################
+    ####### WARM UP NEURAL NETWORK RUNNER #######
+    #############################################
+    inp_shape = self.input_dict[self.start_index]
+    stream = torch.cuda.current_stream()
+    tmp = torch.randn(*inp_shape, dtype=torch.float32).cuda()
+    for _ in range(3):
+      _ = self.model(tmp)
+      stream.synchronize()
+
+
+    #############################################
+    ####### WARM UP NEURAL NETWORK LOADER #######
+    #############################################
+    samples = [
+        '/cmsdata/ssd0/cmslab/Kinetics-400/sparta/laughing/0gR5FP7HpZ4_000024_000034.mp4',
+        '/cmsdata/ssd0/cmslab/Kinetics-400/sparta/laughing/2WowmnRTyqY_000203_000213.mp4',
+        '/cmsdata/ssd0/cmslab/Kinetics-400/sparta/laughing/5GXEjJjgGcc_000058_000068.mp4',
+    ]
+
+    for sample in samples:
+      self.loader.loadfile(sample)
+    for frames in self.loader:
+      pass
+    self.loader.flush()
+    stream.synchronize()
+
+
+  def __call__(self, input):
+    self.loader.loadfile(input)
+    for frames in self.loader:
+      pass
+    self.loader.flush()
+
+    frames = frames.float()
+    frames = frames.permute(0, 2, 1, 3, 4)
+
+    return self.model(frames)
