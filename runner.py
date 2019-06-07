@@ -1,6 +1,6 @@
 """Runner implementation for executing neural networks on the RnB benchmark.
 """
-def runner(input_queue, output_queue, num_exit_markers, print_summary,
+def runner(input_queue, output_queue, print_summary,
            job_id, g_idx, r_idx, global_inference_counter, num_videos,
            termination_flag, step_idx,
            sta_bar, fin_bar,
@@ -22,14 +22,6 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
     stream = torch.cuda.Stream(device=g_idx)
     with torch.cuda.stream(stream):
       with torch.no_grad():
-        # PyTorch seems to have a strange issue of taking a long time to exit
-        # the Python process in case it doesn't use the first GPU...
-        # so we allocate a small tensor at the first GPU before doing anything
-        # to avoid the problem altogether.
-        # This issue may have been fixed in the latest PyTorch release.
-        # TODO #2: Update PyTorch version
-        insurance = torch.randn(1, device=torch.device('cuda:0'))
-
         # load model instance using the given module path
         delimiter_idx = model_module_path.rfind('.')
         module_path = model_module_path[:delimiter_idx]
@@ -105,12 +97,15 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
         if not is_final_step:
           # mark the end of the input stream
           try:
-            for _ in range(num_exit_markers):
+            NUM_EXIT_MARKERS = 10
+            for _ in range(NUM_EXIT_MARKERS):
               output_queue.put_nowait(None)
           except Full:
             pass
 
   fin_bar.wait()
+  if output_queue is not None:
+    output_queue.cancel_join_thread()
 
   if is_final_step:
     # write statistics AFTER the barrier so that
@@ -124,15 +119,3 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
     if print_summary:
       time_card_summary.print_summary(NUM_SKIPS)
       progress_bar.close()
-
-  # We've observed cases where the loader processes do not exit until
-  # all tensors spawned from the loaders are removed from scope (even if they
-  # reach the end of the `loader` function).
-  # We clear the input queue here so loaders can exit successfully.
-  # Note that it doesn't matter if this cleanup takes long, because the
-  # throughput measurement has already been done at the finish barrier above.
-  try:
-    while True:
-      input_queue.get_nowait()
-  except Empty:
-    pass

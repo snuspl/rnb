@@ -34,7 +34,7 @@ def load_videos():
     raise Exception('No video available.')
   return videos
 
-def poisson_client(filename_queue, beta, num_loaders, termination_flag,
+def poisson_client(filename_queue, beta, termination_flag,
                    sta_bar, fin_bar):
   """Sends loaded video to the filename queue, one at a time.
 
@@ -73,7 +73,8 @@ def poisson_client(filename_queue, beta, num_loaders, termination_flag,
   # the loaders should exit by themselves, but we enqueue these markers just in
   # case some loader is waiting on the queue
   try:
-    for _ in range(num_loaders):
+    NUM_EXIT_MARKERS = 10
+    for _ in range(NUM_EXIT_MARKERS):
       filename_queue.put_nowait(None)
   except Full:
     # if the queue is full, then we don't have to do anything because
@@ -82,8 +83,9 @@ def poisson_client(filename_queue, beta, num_loaders, termination_flag,
     pass
 
   fin_bar.wait()
+  filename_queue.cancel_join_thread()
 
-def bulk_client(filename_queue, num_loaders, num_videos, termination_flag,
+def bulk_client(filename_queue, num_videos, termination_flag,
                 sta_bar, fin_bar):
   """Sends videos to the filename queue in bulk, as many as specified by the argument num_videos.
 
@@ -119,7 +121,8 @@ def bulk_client(filename_queue, num_loaders, num_videos, termination_flag,
   # the loaders should exit by themselves, but we enqueue these markers just in
   # case some loader is waiting on the queue
   try:
-    for _ in range(num_loaders):
+    NUM_EXIT_MARKERS = 10
+    for _ in range(NUM_EXIT_MARKERS):
       filename_queue.put_nowait(None)
   except Full:
     # if the queue is full, then we don't have to do anything because
@@ -128,3 +131,4 @@ def bulk_client(filename_queue, num_loaders, num_videos, termination_flag,
     pass
 
   fin_bar.wait()
+  filename_queue.cancel_join_thread()
