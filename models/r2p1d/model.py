@@ -40,11 +40,11 @@ class R2P1DLayerRunner(RunnerModel):
   # the first layer expects an input shape of 
   # (10 clips, 3 channels, 8 consecutive frames, 112 pixels for width, 112 pixels for height)
   # input shape for the later layers change like the following as tensors propagate each layer
-  input_dict = { 1: (10, 3, 8, 112, 112), 
-                 2: (10, 64, 8, 56, 56),
-                 3: (10, 64, 8, 56, 56),
-                 4: (10, 128, 4, 28, 28),
-                 5: (10, 256, 2, 14, 14) }
+  input_dict = { 1: (5, 3, 8, 112, 112), 
+                 2: (5, 64, 8, 56, 56),
+                 3: (5, 64, 8, 56, 56),
+                 4: (5, 128, 4, 28, 28),
+                 5: (5, 256, 2, 14, 14) }
 
   def __init__(self, device, start_index=1, end_index=5, num_classes=400, layer_sizes=None, block_type=SpatioTemporalResBlock):
     super(R2P1DLayerRunner, self).__init__(device)

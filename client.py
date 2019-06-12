@@ -51,14 +51,14 @@ def poisson_client(filename_queue, beta, termination_flag,
 
   sta_bar.wait()
   
-  video_idx = 0
+  video_count = 0
   while termination_flag.value == TerminationFlag.UNSET:
-    video = videos[video_idx]
+    video = videos[video_count % len(videos)]
     # come back to the front of the list if we're at the end
-    video_idx = (video_idx + 1) % len(videos)
+    video_count += 1
 
     # create TimeCard instance to measure the time of key events
-    time_card = TimeCard()
+    time_card = TimeCard(video_count)
     time_card.record('enqueue_filename')
 
     try:
@@ -107,7 +107,7 @@ def bulk_client(filename_queue, num_videos, termination_flag,
     video_count += 1
 
     # create TimeCard instance to measure the time of key events
-    time_card = TimeCard()
+    time_card = TimeCard(video_count)
     time_card.record('enqueue_filename')
 
     try:

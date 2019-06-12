@@ -121,6 +121,7 @@ if __name__ == '__main__':
   from control import TerminationFlag, BenchmarkQueues
   from client import *
   from runner import runner
+  from finisher import finisher
 
   parser = argparse.ArgumentParser()
   parser.add_argument('-mi', '--mean_interval_ms',
@@ -158,7 +159,7 @@ if __name__ == '__main__':
 
   # total num of processes
   # runners + loaders + one client + one main process (this one)
-  bar_total = num_runners + 2
+  bar_total = num_runners + 3
   
   # barrier to ensure all processes start at the same time
   sta_bar = Barrier(bar_total)
@@ -229,8 +230,14 @@ if __name__ == '__main__':
       replica_dict[gpu] = replica_idx + 1
       process_runner_list.append(process_runner)
 
+  finisher_queue = benchmark_queues.get_finisher_queue()
+  process_finisher = Process(target=finisher,
+                             args=(finisher_queue, global_inference_counter,
+                                   args.videos, job_id, termination_flag,
+                                   sta_bar, fin_bar))
 
-  for p in [process_client] + process_runner_list:
+
+  for p in [process_client] + process_runner_list + [process_finisher]:
     p.start()
 
   sta_bar.wait()
@@ -249,7 +256,7 @@ if __name__ == '__main__':
 
 
   print('Waiting for child processes to return...')
-  for p in [process_client] + process_runner_list:
+  for p in [process_client] + process_runner_list + [process_finisher]:
     p.join()
   
 

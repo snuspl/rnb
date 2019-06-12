@@ -10,6 +10,7 @@ class BenchmarkQueues:
   def __init__(self, queue_class, queue_size, pipeline, per_gpu_queue):
     self.per_gpu_queue = per_gpu_queue
     self.filename_queue = queue_class(queue_size)
+    self.finisher_queue = queue_class(queue_size)
     self.num_steps = len(pipeline)
 
     gpus = set(pipeline[0]['gpus'])
@@ -25,10 +26,13 @@ class BenchmarkQueues:
     queue_idx = gpu_idx if self.per_gpu_queue else 0
     prev_queue = self.filename_queue if step_idx == 0 \
                  else self.tensor_queues[step_idx - 1][queue_idx]
-    next_queue = None if step_idx == self.num_steps - 1 \
+    next_queue = self.finisher_queue if step_idx == self.num_steps - 1 \
                  else self.tensor_queues[step_idx][queue_idx]
 
     return prev_queue, next_queue
 
   def get_filename_queue(self):
     return self.filename_queue
+
+  def get_finisher_queue(self):
+    return self.finisher_queue

@@ -13,7 +13,7 @@ def runner(input_queue, output_queue, print_summary,
   import torch
   from queue import Empty, Full
   from tqdm import tqdm
-  from rnb_logging import logname, TimeCardSummary
+  from rnb_logging import logname, TimeCardSummary, TimeCard
   from control import TerminationFlag
 
   # Use our own CUDA stream to avoid synchronizing with other processes
@@ -31,17 +31,15 @@ def runner(input_queue, output_queue, print_summary,
 
         model = model_class(device, **model_kwargs)
 
+        with torch.cuda.device(0):
+          insurance = torch.randn(1).cuda()
 
-        is_final_step = output_queue is None
-        if is_final_step:
-          # collect incoming time measurements for later logging
-          time_card_summary = TimeCardSummary()
 
         sta_bar.wait()
 
-        if print_summary:
-          progress_bar = tqdm(total = num_videos)
-          old_global_inference_counter_value = 0
+        # if print_summary:
+        #   progress_bar = tqdm(total = num_videos)
+        #   old_global_inference_counter_value = 0
 
         while termination_flag.value == TerminationFlag.UNSET:
           tpl = input_queue.get()
@@ -56,66 +54,62 @@ def runner(input_queue, output_queue, print_summary,
           time_card.record('inference%d_start' % step_idx)
 
           outputs = model(tensor)
+
+          # if step_idx == 1:
+            # outputs = 0
+            # time_card = TimeCard(time_card.id)
           stream.synchronize()
           time_card.record('inference%d_finish' % step_idx)
 
-
-          if is_final_step:
-            # increment the inference counter
-            with global_inference_counter.get_lock():
-              global_inference_counter.value += 1
-
-              if print_summary:
-                new_counter_value = global_inference_counter.value
-                if new_counter_value > old_global_inference_counter_value:
-                  progress_bar.update(new_counter_value - old_global_inference_counter_value)
-                  old_global_inference_counter_value = new_counter_value
-
-              if global_inference_counter.value == num_videos:
-                print('Finished processing %d videos' % num_videos)
-                termination_flag.value = TerminationFlag.TARGET_NUM_VIDEOS_REACHED
-              elif global_inference_counter.value > num_videos:
-                # we've already reached our goal; abort immediately
-                break
-
-            time_card_summary.register(time_card)
-
-
-          else:
-            # this is NOT the final step
-            # pass on the intermediate tensor to the next step
+          if step_idx == 0:
+            outputs1 = outputs[:5, :, :, :, :]
+            outputs2 = outputs[5:, :, :, :, :]
             try:
-              output_queue.put_nowait((outputs, time_card))
+              tc = TimeCard(time_card.id)
+              tc.timings = time_card.timings
+              time_card.sub_id = 0
+              tc.sub_id = 1
+              output_queue.put_nowait((outputs1, time_card))
+              output_queue.put_nowait((outputs2, tc))
             except Full:
               print('[WARNING] Queue between runner step %d and %d is full. '
                     'Aborting...' % (step_idx, step_idx+1))
               termination_flag.value = TerminationFlag.FRAME_QUEUE_FULL
               break
+            continue
 
-
-        # the termination flag has been raised
-        if not is_final_step:
-          # mark the end of the input stream
           try:
-            NUM_EXIT_MARKERS = 10
-            for _ in range(NUM_EXIT_MARKERS):
-              output_queue.put_nowait(None)
+            output_queue.put_nowait((outputs, time_card))
           except Full:
-            pass
+            print('[WARNING] Queue between runner step %d and %d is full. '
+                  'Aborting...' % (step_idx, step_idx+1))
+            termination_flag.value = TerminationFlag.FRAME_QUEUE_FULL
+            break
+
+
+        # # the termination flag has been raised
+        # if not is_final_step:
+        # mark the end of the input stream
+        try:
+          NUM_EXIT_MARKERS = 10
+          for _ in range(NUM_EXIT_MARKERS):
+            output_queue.put_nowait(None)
+        except Full:
+          pass
 
   fin_bar.wait()
-  if output_queue is not None:
-    output_queue.cancel_join_thread()
+  # if output_queue is not None:
+  output_queue.cancel_join_thread()
 
-  if is_final_step:
-    # write statistics AFTER the barrier so that
-    # throughput is not affected by unnecessary file I/O
-    with open(logname(job_id, g_idx, r_idx), 'w') as f:
-      time_card_summary.save_full_report(f)
+  # if is_final_step:
+  #   # write statistics AFTER the barrier so that
+  #   # throughput is not affected by unnecessary file I/O
+  #   with open(logname(job_id, g_idx, r_idx), 'w') as f:
+  #     time_card_summary.save_full_report(f)
 
-    # quick summary of the statistics gathered
-    # we skip the first few inferences for stable results
-    NUM_SKIPS = 10
-    if print_summary:
-      time_card_summary.print_summary(NUM_SKIPS)
-      progress_bar.close()
+  #   # quick summary of the statistics gathered
+  #   # we skip the first few inferences for stable results
+  #   NUM_SKIPS = 10
+  #   if print_summary:
+  #     time_card_summary.print_summary(NUM_SKIPS)
+  #     progress_bar.close()
