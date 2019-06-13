@@ -2,12 +2,12 @@ import nvvl
 import torch
 import sys 
 
+from models.r2p1d.sampler import R2P1DSampler
 from models.r2p1d.network import R2Plus1DClassifier, SpatioTemporalResBlock
 from models.r2p1d.network import R2Plus1DLayerWrapper
 from models.r2p1d.network import R2Plus1DLayer12Wrapper
 from models.r2p1d.network import R2Plus1DLayer345Wrapper
 from runner_model import RunnerModel
-from r2p1d_sampler import R2P1DSampler
 
 CKPT_PATH = '/cmsdata/ssd0/cmslab/Kinetics-400/ckpt/model_data.pth.tar'
 

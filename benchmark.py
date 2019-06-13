@@ -9,7 +9,7 @@ The diagram below represents an example job consisting of a client and two
 runners. The first runner receives video filenames from the client and loads the
 files from disk to extract individual frame tensors. The tensors are then passed
 to the second runner, which inputs them into a neural network to perform video
-QA. Queues are placed betweent the client and runners to allow concurrent
+analytics. Queues are placed betweent the client and runners to allow concurrent
 execution. Note that the client and runner processes do not necessarily need to
 be single processes; the second runner can be instantiated as more then one
 process if the input load is high.
