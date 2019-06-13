@@ -1,14 +1,22 @@
 """Main entry point for the video analytics inference benchmark.
 
-This PyTorch benchmark spawns client, loader, and runner processes to perform
-video inference in a pipelined fashion. The implementation of each process is
-expected to be written in individual modules; this file only provides a bare
-backbone of how the overall procedure works. Note that the client, loader,
-and runner processes do not necessarily need to be single processes.
+This PyTorch benchmark spawns a client process and multiple runner processes to
+perform video inference in a pipelined fashion. The implementation of each
+process is expected to be written in individual modules; this file only provides
+a bare backbone of how the overall procedure works.
+
+The diagram below represents an example job consisting of a client and two
+runners. The first runner receives video filenames from the client and loads the
+files from disk to extract individual frame tensors. The tensors are then passed
+to the second runner, which inputs them into a neural network to perform video
+analytics. Queues are placed betweent the client and runners to allow concurrent
+execution. Note that the client and runner processes do not necessarily need to
+be single processes; the second runner can be instantiated as more then one
+process if the input load is high.
 
 
-          video filenames             video frame tensors
-(client) -----------------> (loader) ---------------------> (runner)
+          video filenames              video frame tensors
+(client) -----------------> (runner1) ---------------------> (runner2)
                queue                         queue
 """
 
@@ -107,7 +115,6 @@ if __name__ == '__main__':
   from rnb_logging import logmeta, logroot
   from control import TerminationFlag
   from client import *
-  from r2p1d_loader import loader
   from runner import runner
 
   parser = argparse.ArgumentParser()
@@ -118,8 +125,6 @@ if __name__ == '__main__':
                       type=positive_int, default=1)
   parser.add_argument('-v', '--videos', help='Total number of videos to run',
                       type=positive_int, default=2000)
-  parser.add_argument('-l', '--loaders', help='Number of loader processes to spawn',
-                      type=positive_int, default=1)
   parser.add_argument('-qs', '--queue_size',
                       help='Maximum queue size for inter-process queues',
                       type=positive_int, default=500)
@@ -131,12 +136,11 @@ if __name__ == '__main__':
   
   sanity_check(args)
 
-  job_id = '%s-mi%d-b%d-v%d-l%d-qs%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
-                                         args.mean_interval_ms,
-                                         args.batch_size,
-                                         args.videos,
-                                         args.loaders,
-                                         args.queue_size)
+  job_id = '%s-mi%d-b%d-v%d-qs%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
+                                     args.mean_interval_ms,
+                                     args.batch_size,
+                                     args.videos,
+                                     args.queue_size)
 
   # do a quick pass through the pipeline to count the total number of runners
   with open(args.config_file_path, 'r') as f:
@@ -145,8 +149,8 @@ if __name__ == '__main__':
   num_runners_first_step = len(pipeline[0]['gpus'])
 
   # total num of processes
-  # runners + loaders + one client + one main process (this one)
-  bar_total = num_runners + args.loaders + 2 
+  # runners + one client + one main process (this one)
+  bar_total = num_runners + 2
   
   # barrier to ensure all processes start at the same time
   sta_bar = Barrier(bar_total)
@@ -165,34 +169,25 @@ if __name__ == '__main__':
   # (mean_interval_ms = 0 is a special case where all videos are put in queues at once)
   queue_size = args.queue_size if args.mean_interval_ms > 0 else args.videos + num_runners + 1
 
-  # queue between client and loader
+  # queue between client and first runner
   filename_queue = Queue(queue_size)
-  # queue between loader and runner
-  frame_queue = Queue(queue_size)
 
   # We use different client implementations for different mean intervals
   if args.mean_interval_ms > 0:
     client_impl = poisson_client
     client_args = (filename_queue, args.mean_interval_ms,
-                   args.loaders, termination_flag,
+                   num_runners_first_step, termination_flag,
                    sta_bar, fin_bar)
   else:
     client_impl = bulk_client
-    client_args = (filename_queue, args.loaders, args.videos, termination_flag,
+    client_args = (filename_queue, num_runners_first_step, args.videos, termination_flag,
                    sta_bar, fin_bar)
   process_client = Process(target=client_impl,
                            args=client_args)
 
-  process_loader_list = [Process(target=loader,
-                                 args=(filename_queue, frame_queue,
-                                       num_runners_first_step, l,
-                                       termination_flag,
-                                       sta_bar, fin_bar))
-                         for l in range(args.loaders)]
-
   # hold at least one reference for all queues
   # otherwise, a queue object may get destroyed before child processes start
-  queues = [frame_queue]
+  queues = [filename_queue]
   process_runner_list = []
   for step_idx, step in enumerate(pipeline):
     is_final_step = step_idx == len(pipeline) - 1
@@ -240,7 +235,7 @@ if __name__ == '__main__':
       process_runner_list.append(process_runner)
 
 
-  for p in [process_client] + process_loader_list + process_runner_list:
+  for p in [process_client] + process_runner_list:
     p.start()
 
   sta_bar.wait()
@@ -259,7 +254,7 @@ if __name__ == '__main__':
 
 
   print('Waiting for child processes to return...')
-  for p in [process_client] + process_loader_list + process_runner_list:
+  for p in [process_client] + process_runner_list:
     p.join()
   
 
