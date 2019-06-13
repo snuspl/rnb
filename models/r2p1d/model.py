@@ -101,3 +101,69 @@ class R2P1DLoader(RunnerModel):
 
   def __del__(self):
     self.loader.close()
+
+
+class R2P1DSingleStep(RunnerModel):
+  """RunnerModel impl that contains all inference logic regarding R(2+1)D.
+
+  This RunnerModel can basically be used to run the R(2+1)D model without any
+  pipelining between steps. In terms of code, this class simply merges
+  R2P1DLoader with R2P1DLayerRunner, excluding the functionality of specifying
+  layer start and end indices (`start_index` and `end_index`).
+  """
+  input_shape = (10, 3, 8, 112, 112)
+
+  def __init__(self, device, num_classes=400, layer_sizes=[2,2,2,2],
+               block_type=SpatioTemporalResBlock):
+    super(R2P1DSingleStep, self).__init__(device)
+
+    # instantiate the main neural network
+    self.model = R2Plus1DClassifier(num_classes, layer_sizes, block_type) \
+                     .to(device)
+
+    # initalize the model with pre-trained weights
+    ckpt = torch.load(CKPT_PATH, map_location=device)
+    self.model.load_state_dict(ckpt['state_dict'])
+
+
+    # prepare the loader for converting videos into frames
+    self.loader = nvvl.RnBLoader(width=112, height=112,
+                                 consecutive_frames=8, device_id=device.index,
+                                 sampler=R2P1DSampler(clip_length=8))
+
+
+    # warm up the neural network
+    stream = torch.cuda.current_stream()
+    tmp = torch.randn(*self.input_shape, dtype=torch.float32).cuda()
+    for _ in range(3):
+      _ = self.model(tmp)
+      stream.synchronize()
+
+
+    # warm up the loader
+    samples = [
+        '/cmsdata/ssd0/cmslab/Kinetics-400/sparta/laughing/0gR5FP7HpZ4_000024_000034.mp4',
+        '/cmsdata/ssd0/cmslab/Kinetics-400/sparta/laughing/2WowmnRTyqY_000203_000213.mp4',
+        '/cmsdata/ssd0/cmslab/Kinetics-400/sparta/laughing/5GXEjJjgGcc_000058_000068.mp4',
+    ]
+
+    for sample in samples:
+      self.loader.loadfile(sample)
+    for frames in self.loader:
+      pass
+    self.loader.flush()
+    stream.synchronize()
+
+  def __call__(self, input):
+    self.loader.loadfile(input)
+    for frames in self.loader:
+      pass
+    self.loader.flush()
+
+    frames = frames.float()
+    frames = frames.permute(0, 2, 1, 3, 4)
+
+    return self.model(frames)
+
+  def __del__(self):
+    self.loader.close()
