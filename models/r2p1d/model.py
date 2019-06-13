@@ -202,7 +202,8 @@ class R2P1DSingleStep(RunnerModel):
 
   This RunnerModel can basically be used to run the R(2+1)D model without any
   pipelining between steps. In terms of code, this class simply merges
-  R2P1DLoader with R2P1DLayerRunner.
+  R2P1DLoader with R2P1DLayerRunner, excluding the functionality of specifying
+  layer start and end indices (`start_index` and `end_index`).
   """
   input_shape = (10, 3, 8, 112, 112)
 
