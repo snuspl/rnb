@@ -197,56 +197,26 @@ class R2P1DLoader(RunnerModel):
     self.loader.close()
 
 
-class R2P1D(RunnerModel):
+class R2P1DSingleStep(RunnerModel):
   """RunnerModel impl that contains all inference logic regarding R(2+1)D.
 
   This RunnerModel can basically be used to run the R(2+1)D model without any
   pipelining between steps. In terms of code, this class simply merges
   R2P1DLoader with R2P1DLayerRunner.
   """
-  input_dict = { 1: (10, 3, 8, 112, 112),
-                 2: (10, 64, 8, 56, 56),
-                 3: (10, 64, 8, 56, 56),
-                 4: (10, 128, 4, 28, 28),
-                 5: (10, 256, 2, 14, 14) }
+  input_shape = (10, 3, 8, 112, 112)
 
-  def __init__(self, device, start_index=1, end_index=5, num_classes=400,
-               layer_sizes=None, block_type=SpatioTemporalResBlock):
-    super(R2P1D, self).__init__(device)
+  def __init__(self, device, num_classes=400, layer_sizes=[2,2,2,2],
+               block_type=SpatioTemporalResBlock):
+    super(R2P1DSingleStep, self).__init__(device)
 
     # instantiate the main neural network
-    if start_index < 1:
-      print('[ERROR] Wrong layer index for the starting layer! '
-            'The start_index (%d) should be more than or equal to 1.'
-            % start_index)
-      sys.exit()
+    self.model = R2Plus1DClassifier(num_classes, layer_sizes, block_type) \
+                     .to(device)
 
-    elif end_index > 5:
-      print('[ERROR] Wrong layer index for the ending layer! '
-            'The end_index (%d) should be less than or equal to 5.'
-            % end_index)
-      sys.exit()
-
-    if layer_sizes is None:
-      layer_sizes = [2 for _ in range(start_index, end_index+1)]
-    self.start_index = start_index
-    self.model = R2Plus1DLayerWrapper(start_index, end_index, num_classes,
-                                      layer_sizes, block_type).to(device)
-
-    # initalize the model with pre-trained weights    
+    # initalize the model with pre-trained weights
     ckpt = torch.load(CKPT_PATH, map_location=device)
-
-    state_dict = {}
-    # filter out weights that are not used in this model
-    for i in range(start_index, end_index+1):
-      layer = 'res2plus1d.conv%d' % i
-      state_dict.update({k:v for k, v in ckpt['state_dict'].items() if
-                         k.startswith(layer)})
-
-    if end_index == 5:
-      state_dict.update({k:v for k, v in ckpt['state_dict'].items() if
-                         k.startswith('linear')})
-    self.model.load_state_dict(state_dict)
+    self.model.load_state_dict(ckpt['state_dict'])
 
 
     # prepare the loader for converting videos into frames
@@ -256,9 +226,8 @@ class R2P1D(RunnerModel):
 
 
     # warm up the neural network
-    inp_shape = self.input_dict[self.start_index]
     stream = torch.cuda.current_stream()
-    tmp = torch.randn(*inp_shape, dtype=torch.float32).cuda()
+    tmp = torch.randn(*self.input_shape, dtype=torch.float32).cuda()
     for _ in range(3):
       _ = self.model(tmp)
       stream.synchronize()
@@ -288,3 +257,6 @@ class R2P1D(RunnerModel):
     frames = frames.permute(0, 2, 1, 3, 4)
 
     return self.model(frames)
+
+  def __del__(self):
+    self.loader.close()

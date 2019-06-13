@@ -1,8 +1,6 @@
 [
   {
-    "model": "models.r2p1d.model.R2P1D",
-    "gpus": [0, 1],
-    "start_index": 1,
-    "end_index": 5
+    "model": "models.r2p1d.model.R2P1DSingleStep",
+    "gpus": [0, 1]
   }
 ]
