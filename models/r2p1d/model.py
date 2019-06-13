@@ -9,7 +9,7 @@ from runner_model import RunnerModel
 
 CKPT_PATH = '/cmsdata/ssd0/cmslab/Kinetics-400/ckpt/model_data.pth.tar'
 
-class R2P1DLayerRunner(RunnerModel):
+class R2P1DRunner(RunnerModel):
   """RunnerModel that can create any connected subset of the R(2+1)D model for RnB benchmark runners.
   
   start_index and end_index are assumed to be 1-indexed. 
@@ -25,7 +25,7 @@ class R2P1DLayerRunner(RunnerModel):
                  5: (10, 256, 2, 14, 14) }
 
   def __init__(self, device, start_index=1, end_index=5, num_classes=400, layer_sizes=None, block_type=SpatioTemporalResBlock):
-    super(R2P1DLayerRunner, self).__init__(device)
+    super(R2P1DRunner, self).__init__(device)
     
     if start_index < 1:
       print('[ERROR] Wrong layer index for the starting layer! The start_index (%d) should be more than or equal to 1.' % start_index) 
