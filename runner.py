@@ -1,6 +1,6 @@
 """Runner implementation for executing neural networks on the RnB benchmark.
 """
-def runner(input_queue, output_queue, num_exit_markers, print_summary,
+def runner(input_queue, output_queue, print_summary,
            job_id, g_idx, r_idx, global_inference_counter, num_videos,
            termination_flag, step_idx,
            sta_bar, fin_bar,
@@ -105,7 +105,8 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
         if not is_final_step:
           # mark the end of the input stream
           try:
-            for _ in range(num_exit_markers):
+            NUM_EXIT_MARKERS = 10
+            for _ in range(NUM_EXIT_MARKERS):
               output_queue.put_nowait(None)
           except Full:
             pass

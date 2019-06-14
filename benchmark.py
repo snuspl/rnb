@@ -33,6 +33,10 @@ def sanity_check(args):
      If a GPU has no process running, but is consuming some memory, we will regard the GPU as 'not-free', 
      and prevent users from using it. If user requires any GPU that is either
      not accessible or not free, the program will also terminate.
+  4) The per_gpu_queue option is valid only when all steps use the same set of
+     GPUs. Thus, we examine which GPUs each step is using, and terminate the
+     program if the sets are different. This check is ignored if per_gpu_queue
+     is not true.
   """
   import json
   import os
@@ -49,13 +53,20 @@ def sanity_check(args):
     # Track which gpus are going to be used, for case 3.
     logical_gpus_to_use = set()
 
+    # Track which gpus each step is trying to use, for case 4.
+    gpus_to_use_per_step = []
+
     for step in pipeline:
       assert isinstance(step, dict)
       assert isinstance(step['model'], str)
       assert isinstance(step['gpus'], list)
+
+      gpus_to_use_this_step = set()
       for gpu in step['gpus']:
         assert isinstance(gpu, int)
         logical_gpus_to_use.add(gpu)
+        gpus_to_use_this_step.add(gpu)
+      gpus_to_use_per_step.append(gpus_to_use_this_step)
 
   except Exception as err:
     print('[ERROR] Malformed pipeline configuration file. See below:')
@@ -94,6 +105,13 @@ def sanity_check(args):
       sys.exit()
   
   py3nvml.nvmlShutdown()
+
+  # Case 4: Compare the GPU sets of all steps
+  if args.per_gpu_queue:
+    gpus_first_step = gpus_to_use_per_step[0]
+    if not all([gpus == gpus_first_step for gpus in gpus_to_use_per_step[1:]]):
+      print('[ERROR] All steps must use the same GPUs for per_gpu_queue mode.')
+      sys.exit()
   
 if __name__ == '__main__':
   # placing these imports before the if statement results in a
@@ -113,7 +131,7 @@ if __name__ == '__main__':
 
   # change these if you want to use different client/loader/runner impls
   from rnb_logging import logmeta, logroot
-  from control import TerminationFlag
+  from control import TerminationFlag, BenchmarkQueues
   from client import *
   from runner import runner
 
@@ -131,22 +149,25 @@ if __name__ == '__main__':
   parser.add_argument('-c', '--config_file_path',
                       help='File path of the pipeline configuration file',
                       type=str, default='config/r2p1d-whole.json')
+  parser.add_argument('-p', '--per_gpu_queue',
+                      help='Whether to place intermediate queues on each GPU',
+                      action='store_true')
   args = parser.parse_args()
   print('Args:', args)
   
   sanity_check(args)
 
-  job_id = '%s-mi%d-b%d-v%d-qs%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
-                                     args.mean_interval_ms,
-                                     args.batch_size,
-                                     args.videos,
-                                     args.queue_size)
+  job_id = '%s-mi%d-b%d-v%d-qs%d-p%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
+                                         args.mean_interval_ms,
+                                         args.batch_size,
+                                         args.videos,
+                                         args.queue_size,
+                                         args.per_gpu_queue)
 
   # do a quick pass through the pipeline to count the total number of runners
   with open(args.config_file_path, 'r') as f:
     pipeline = json.load(f)
   num_runners = sum([len(step['gpus']) for step in pipeline])
-  num_runners_first_step = len(pipeline[0]['gpus'])
 
   # total num of processes
   # runners + one client + one main process (this one)
@@ -169,33 +190,26 @@ if __name__ == '__main__':
   # (mean_interval_ms = 0 is a special case where all videos are put in queues at once)
   queue_size = args.queue_size if args.mean_interval_ms > 0 else args.videos + num_runners + 1
 
-  # queue between client and first runner
-  filename_queue = Queue(queue_size)
+  # create BenchmarkQueues object for managing queues between steps
+  benchmark_queues = BenchmarkQueues(Queue, queue_size, pipeline,
+                                     args.per_gpu_queue)
+  filename_queue = benchmark_queues.get_filename_queue()
 
   # We use different client implementations for different mean intervals
   if args.mean_interval_ms > 0:
     client_impl = poisson_client
     client_args = (filename_queue, args.mean_interval_ms,
-                   num_runners_first_step, termination_flag,
-                   sta_bar, fin_bar)
+                   termination_flag, sta_bar, fin_bar)
   else:
     client_impl = bulk_client
-    client_args = (filename_queue, num_runners_first_step, args.videos, termination_flag,
+    client_args = (filename_queue, args.videos, termination_flag,
                    sta_bar, fin_bar)
   process_client = Process(target=client_impl,
                            args=client_args)
 
-  # hold at least one reference for all queues
-  # otherwise, a queue object may get destroyed before child processes start
-  queues = [filename_queue]
   process_runner_list = []
   for step_idx, step in enumerate(pipeline):
     is_final_step = step_idx == len(pipeline) - 1
-
-    # Create a queue for the processes in this step to put results into.
-    # We don't need a queue for the last step, so we add a None placeholder.
-    output_queue = Queue(queue_size) if not is_final_step else None
-    queues.append(output_queue)
 
     # We assume that all entries except 'model' and 'gpus' are model-specific parameters that need to be passed to the runner
     model = step.pop('model')
@@ -205,16 +219,11 @@ if __name__ == '__main__':
     for instance_idx, gpu in enumerate(gpus):
       is_first_instance = instance_idx == 0
 
+      prev_queue, next_queue = benchmark_queues.get_tensor_queue(step_idx, gpu)
+
       # check the replica index of this particular runner, for this gpu
       # if this runner is the first, then give it index 0
       replica_idx = replica_dict.get(gpu, 0)
-
-      # this step should create as many markers as the number of replicas for
-      # the next step (== len(pipeline[step_idx+1]['gpus']));
-      # the first instance creates all markers, other instances do nothing
-      num_exit_markers = len(pipeline[step_idx+1]['gpus']) \
-                         if not is_final_step and is_first_instance \
-                         else 0
 
       # we only want a single instance of the last step to print summaries
       print_summary = is_final_step and is_first_instance
@@ -222,8 +231,8 @@ if __name__ == '__main__':
       # the last two queues in `queues` are
       # the input and output queue for this step, respectively
       process_runner = Process(target=runner,
-                               args=(queues[-2], queues[-1],
-                                     num_exit_markers, print_summary,
+                               args=(prev_queue, next_queue,
+                                     print_summary,
                                      job_id, gpu, replica_idx,
                                      global_inference_counter, args.videos,
                                      termination_flag, step_idx,
