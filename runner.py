@@ -111,6 +111,8 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
             pass
 
   fin_bar.wait()
+  if output_queue is not None:
+    output_queue.cancel_join_thread()
 
   if is_final_step:
     # write statistics AFTER the barrier so that
@@ -125,14 +127,3 @@ def runner(input_queue, output_queue, num_exit_markers, print_summary,
       time_card_summary.print_summary(NUM_SKIPS)
       progress_bar.close()
 
-  # We've observed cases where the loader processes do not exit until
-  # all tensors spawned from the loaders are removed from scope (even if they
-  # reach the end of the `loader` function).
-  # We clear the input queue here so loaders can exit successfully.
-  # Note that it doesn't matter if this cleanup takes long, because the
-  # throughput measurement has already been done at the finish barrier above.
-  try:
-    while True:
-      input_queue.get_nowait()
-  except Empty:
-    pass
