@@ -24,33 +24,55 @@ class BenchmarkQueues:
 
     # self.tensor_queues is a list of dictionaries, e.g.,
     # [
+    #   {0: filename_queue, 1: filename_queue}, (queue between client and step0)
     #   {0: q_step01_gpu0, 1: q_step01_gpu1}, (set of queues between step 0 & 1)
     #   {0: q_step12_gpu0, 1: q_step12_gpu1}, (set of queues between step 1 & 2)
+    #   ...
+    #   {0: None, 1: None} (the last step does not need an output queue)
     # ]
     # in case we use global queues, each dictionary will hold only one queue:
     # [
+    #   {0: filename_queue}, (queue between client and step 0)
     #   {0: q_step01}, (global queue between step 0 & 1)
     #   {0: q_step12}, (global queue between step 1 & 2)
+    #   {0: None} (the last step does not need an output queue)
     # ]
     if per_gpu_queue:
       # we assume that all steps use the same set of gpus
       gpus = set(pipeline[0]['gpus'])
       self.tensor_queues = [{gpu: queue_class(queue_size) for gpu in gpus}
                             for step_idx in range(self.num_steps - 1)]
+
+      # The first step will receive filenames from client via filename_queue.
+      # Unlike tensor queues, filename_queue is always a global queue so we
+      # insert the same entry (self.filename_queue) for all gpu indices.
+      self.tensor_queues.insert(0, {gpu: self.filename_queue for gpu in gpus})
+
+      # The last step does need an output queue, so we pass None.
+      self.tensor_queues.append({gpu: None for gpu in gpus})
+
     else:
-      self.tensor_queues = [{0:queue_class(queue_size)}
+      # There is no need for differentiating queues according to gpu index,
+      # since there is only one global queue (per step) anyway.
+      # Thus, instead of using gpu index as the dictionary key, we simply set
+      # the number 0 as the only key.
+      # Note that we could even just abandon the dictionary type and do
+      # something like [queue_class(queue_size) for _ in range(...)],
+      # but we keep the dictionary type to simplify the logic of later
+      # choosing prev_queue and next_queue in get_tensor_queue().
+      self.tensor_queues = [{0: queue_class(queue_size)}
                             for step_idx in range(self.num_steps - 1)]
+
+      # The first step will receive filenames from client via filename_queue.
+      self.tensor_queue.insert(0, {0: self.filename_queue})
+
+      # The last step does need an output queue, so we pass None.
+      self.tensor_queue.append({0: None})
 
   def get_tensor_queue(self, step_idx, gpu_idx):
     queue_idx = gpu_idx if self.per_gpu_queue else 0
-
-    # the first step will receive filenames from the client via filename_queue
-    prev_queue = self.filename_queue if step_idx == 0 \
-                 else self.tensor_queues[step_idx - 1][queue_idx]
-
-    # the last step does not need an output queue, so we pass None
-    next_queue = None if step_idx == self.num_steps - 1 \
-                 else self.tensor_queues[step_idx][queue_idx]
+    prev_queue = self.tensor_queues[step_idx][queue_idx]
+    next_queue = self.tensor_queues[step_idx + 1][queue_idx]
 
     return prev_queue, next_queue
 

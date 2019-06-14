@@ -1,5 +1,7 @@
 """Runner implementation for executing neural networks on the RnB benchmark.
 """
+NUM_EXIT_MARKERS = 10
+NUM_SUMMARY_SKIPS = 10
 def runner(input_queue, output_queue, print_summary,
            job_id, g_idx, r_idx, global_inference_counter, num_videos,
            termination_flag, step_idx,
@@ -105,7 +107,6 @@ def runner(input_queue, output_queue, print_summary,
         if not is_final_step:
           # mark the end of the input stream
           try:
-            NUM_EXIT_MARKERS = 10
             for _ in range(NUM_EXIT_MARKERS):
               output_queue.put_nowait(None)
           except Full:
@@ -121,9 +122,8 @@ def runner(input_queue, output_queue, print_summary,
 
     # quick summary of the statistics gathered
     # we skip the first few inferences for stable results
-    NUM_SKIPS = 10
     if print_summary:
-      time_card_summary.print_summary(NUM_SKIPS)
+      time_card_summary.print_summary(NUM_SUMMARY_SKIPS)
       progress_bar.close()
 
   # We've observed cases where the loader processes do not exit until
