@@ -60,6 +60,10 @@ class TimeCardSummary:
     to skip when calculating average elapsed time.
     """
     for prv, nxt in zip(self.keys[:-1], self.keys[1:]):
+      if len(self.summary[prv]) <= num_skips:
+        print('Not enough log entries (%d records) to print summary!' % len(self.summary[prv]))
+        break
+
       elapsed_time = np.mean((
           np.array(self.summary[nxt][num_skips:]) -
           np.array(self.summary[prv][num_skips:])) * 1000)
