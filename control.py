@@ -64,10 +64,10 @@ class BenchmarkQueues:
                             for step_idx in range(self.num_steps - 1)]
 
       # The first step will receive filenames from client via filename_queue.
-      self.tensor_queue.insert(0, {0: self.filename_queue})
+      self.tensor_queues.insert(0, {0: self.filename_queue})
 
       # The last step does need an output queue, so we pass None.
-      self.tensor_queue.append({0: None})
+      self.tensor_queues.append({0: None})
 
   def get_tensor_queue(self, step_idx, gpu_idx):
     queue_idx = gpu_idx if self.per_gpu_queue else 0
