@@ -19,10 +19,16 @@ def logname(job_id, g_idx, r_idx):
   return '%s/g%d-r%d.txt' % (root, g_idx, r_idx)
 
 
+def logcustom(job_id, custom):
+  root = logroot(job_id)
+  return '%s/%s' % (root, custom)
+
+
 class TimeCard:
   """Wrapper of OrderedDict for representing a list of events w/ timestamps."""
-  def __init__(self):
+  def __init__(self, id):
     self.timings = OrderedDict()
+    self.id = id
 
 
   def record(self, key):

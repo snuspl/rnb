@@ -20,6 +20,7 @@ class BenchmarkQueues:
   def __init__(self, queue_class, queue_size, pipeline, per_gpu_queue):
     self.per_gpu_queue = per_gpu_queue
     self.filename_queue = queue_class(queue_size)
+    self.aggregator_queue = queue_class(queue_size)
     self.num_steps = len(pipeline)
 
     # self.tensor_queues is a list of dictionaries, e.g.,
@@ -49,7 +50,7 @@ class BenchmarkQueues:
       self.tensor_queues.insert(0, {gpu: self.filename_queue for gpu in gpus})
 
       # The last step does need an output queue, so we pass None.
-      self.tensor_queues.append({gpu: None for gpu in gpus})
+      self.tensor_queues.append({gpu: self.aggregator_queue for gpu in gpus})
 
     else:
       # There is no need for differentiating queues according to gpu index,
@@ -67,7 +68,7 @@ class BenchmarkQueues:
       self.tensor_queues.insert(0, {0: self.filename_queue})
 
       # The last step does need an output queue, so we pass None.
-      self.tensor_queues.append({0: None})
+      self.tensor_queues.append({0: self.aggregator_queue})
 
   def get_tensor_queue(self, step_idx, gpu_idx):
     queue_idx = gpu_idx if self.per_gpu_queue else 0
@@ -78,3 +79,6 @@ class BenchmarkQueues:
 
   def get_filename_queue(self):
     return self.filename_queue
+
+  def get_aggregator_queue(self):
+    return self.aggregator_queue

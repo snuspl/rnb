@@ -69,6 +69,18 @@ class R2P1DRunner(RunnerModel):
     return self.model(input)
 
 
+class CloneRunner(RunnerModel):
+  def __init__(self, device):
+    super(CloneRunner, self).__init__(device)
+
+  def __call__(self, input):
+    # print(input.shape)
+    return torch.ones(10, 400, dtype=torch.float32).cuda()
+    # return input.clone()
+    # c.share_memory_()
+    # return list(range(400))
+
+
 class R2P1DLoader(RunnerModel):
   """Impl of loading video frames using NVVL, for the R(2+1)D model."""
   def __init__(self, device):

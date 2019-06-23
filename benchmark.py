@@ -134,6 +134,7 @@ if __name__ == '__main__':
   from control import TerminationFlag, BenchmarkQueues
   from client import *
   from runner import runner
+  from aggregator import aggregator
 
   parser = argparse.ArgumentParser()
   parser.add_argument('-mi', '--mean_interval_ms',
@@ -170,8 +171,8 @@ if __name__ == '__main__':
   num_runners = sum([len(step['gpus']) for step in pipeline])
 
   # total num of processes
-  # runners + one client + one main process (this one)
-  bar_total = num_runners + 2
+  # runners + one client + one aggregator + one main process (this one)
+  bar_total = num_runners + 3
   
   # barrier to ensure all processes start at the same time
   sta_bar = Barrier(bar_total)
@@ -207,6 +208,15 @@ if __name__ == '__main__':
   process_client = Process(target=client_impl,
                            args=client_args)
 
+
+  final_runner_gpus = set(pipeline[-1]['gpus'])
+  aggregator_queue = benchmark_queues.get_aggregator_queue()
+  process_aggregator = Process(target=aggregator,
+                               args=(aggregator_queue, args.videos,
+                                     final_runner_gpus,
+                                     job_id, termination_flag,
+                                     sta_bar, fin_bar))
+
   process_runner_list = []
   for step_idx, step in enumerate(pipeline):
     is_final_step = step_idx == len(pipeline) - 1
@@ -225,16 +235,11 @@ if __name__ == '__main__':
       # if this runner is the first, then give it index 0
       replica_idx = replica_dict.get(gpu, 0)
 
-      # we only want a single instance of the last step to print summaries
-      print_summary = is_final_step and is_first_instance
-
       # the last two queues in `queues` are
       # the input and output queue for this step, respectively
       process_runner = Process(target=runner,
                                args=(prev_queue, next_queue,
-                                     print_summary,
                                      job_id, gpu, replica_idx,
-                                     global_inference_counter, args.videos,
                                      termination_flag, step_idx,
                                      sta_bar, fin_bar,
                                      model),
@@ -244,7 +249,7 @@ if __name__ == '__main__':
       process_runner_list.append(process_runner)
 
 
-  for p in [process_client] + process_runner_list:
+  for p in [process_client] + process_runner_list + [process_aggregator]:
     p.start()
 
   sta_bar.wait()
@@ -263,7 +268,7 @@ if __name__ == '__main__':
 
 
   print('Waiting for child processes to return...')
-  for p in [process_client] + process_runner_list:
+  for p in [process_client] + process_runner_list + [process_aggregator]:
     p.join()
   
 
