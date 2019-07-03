@@ -10,9 +10,9 @@ Thus this test benchmark serves as the testing ground for experiment with variou
 The figure above shows the end-to-end pipeline of the test benchmark. 
 As you can see from the figure above, there exist two kinds of processes in total: `client` and `runner`. The number of processes for each step can vary, and the analysis on the tests with different number of processes, batches, replications and GPUs will be explored to find the ultimate optimal configuration. 
 
-In order to concurrently execute multiple processes at the same time, two queues exist and let items pass across processes.
-  - `frame_queue`: This queue will pass a batched tensor of a single video from `loader` process to `runner` process. 
-  - `filename_queue`: This queue will pass each path of videos from `client` process to `loader` process.   
+In order to concurrently execute multiple processes at the same time, input and output queues exist and let items pass across processes. You can either make global queues or local queues per GPU be configuring `-p` option in `benchmark.py`.
+  - `filename_queue`: This queue will pass each path of videos from `client` process to `runner` process.   
+  - `frame_queue`: This queue will pass a batched tensor of a single video between `runner` processes. 
 
 
 ## Files Description
@@ -161,8 +161,6 @@ This file does factored R2Plus1D convolution.
 - `models/r2p1d/network.py`
 This file builds up residual network using `module.py`.
 
-- `models/r2p1d/sampler.py`
-This class chooses indices of frames to read based on the number of clips and the number of frames per clip. Following the implementation described in the R(2+1)D paper, we sample 10 clips in which one clip consists of 8 frames.    
 
 
 ### Data Preparation
@@ -173,7 +171,7 @@ Since we have data and the models ready, it's time to test in an end-to-end mann
 Designate GPUs that you would like to utilize. Then run benchmark.py with proper arguments.
 
 ```bash
-$ export CUDA_VISIBLE_DEVICES=0,1 # or any combination you wish from [0,1,2,3,4,5]
+$ export CUDA_VISIBLE_DEVICES=0 # or any combination you wish from [0,1,2,3,4,5]
 $ python benchmark.py -c config/r2p1d-whole.json -v 500 -mi 90
 ```
 When the upper-mentioned commands are run, the following messages will be printed and logs will be saved.  
