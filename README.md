@@ -213,3 +213,4 @@ $ python test_cupti.py
 _Z21kernelPointwiseApply2I6CopyOpIffEffjLi1ELi2EEv10OffsetInfoIT0_T2_XT3_EES2_IT1_S4_XT4_EES4_T_
 sgemm_32x32x32_NT_vec
 ```
+
