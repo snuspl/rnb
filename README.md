@@ -10,7 +10,7 @@ Thus this test benchmark serves as the testing ground for experiment with variou
 The figure above shows the end-to-end pipeline of the test benchmark. 
 As you can see from the figure above, there exist two kinds of processes in total: `client` and `runner`. The number of processes for each step can vary, and the analysis on the tests with different number of processes, batches, replications and GPUs will be explored to find the ultimate optimal configuration. 
 
-In order to concurrently execute multiple processes at the same time, input and output queues exist and let items pass across processes. You can either make global queues or local queues per GPU be configuring `-p` option in `benchmark.py`.
+In order to concurrently execute multiple processes at the same time, input and output queues exist and let items pass across processes. You can either make global queues or local queues per GPU by configuring `-p` option in `benchmark.py`.
   - `filename_queue`: This queue will pass each path of videos from `client` process to `runner` process.   
   - `frame_queue`: This queue will pass a batched tensor of a single video between `runner` processes. 
 
@@ -157,9 +157,6 @@ This file runs the model either in a single step, or in several steps using part
 
 - `models/r2p1d/module.py`
 This file does factored R2Plus1D convolution.
-
-- `models/r2p1d/network.py`
-This file builds up residual network using `module.py`.
 
 ### Data Preparation
 The data used for this test benchmark is [Kinetics-400](https://deepmind.com/research/open-source/open-source-datasets/kinetics/). The data is stored under `/cmsdata/ssd0/cmslab/Kinetics-400/sparta`, and this full directory is already given in `client.py` under a variable named `root`.   
