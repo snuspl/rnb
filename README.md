@@ -161,8 +161,6 @@ This file does factored R2Plus1D convolution.
 - `models/r2p1d/network.py`
 This file builds up residual network using `module.py`.
 
-
-
 ### Data Preparation
 The data used for this test benchmark is [Kinetics-400](https://deepmind.com/research/open-source/open-source-datasets/kinetics/). The data is stored under `/cmsdata/ssd0/cmslab/Kinetics-400/sparta`, and this full directory is already given in `client.py` under a variable named `root`.   
 
@@ -215,5 +213,3 @@ $ python test_cupti.py
 _Z21kernelPointwiseApply2I6CopyOpIffEffjLi1ELi2EEv10OffsetInfoIT0_T2_XT3_EES2_IT1_S4_XT4_EES4_T_
 sgemm_32x32x32_NT_vec
 ```
-
-
