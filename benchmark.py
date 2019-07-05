@@ -197,8 +197,9 @@ if __name__ == '__main__':
                                      args.per_gpu_queue)
   filename_queue = benchmark_queues.get_filename_queue()
 
-  # load video path provider instance using the given module path
-  video_path_iterator = load_class(config['video_path_iterator'])
+  # load video path iterator using the given path
+  video_path_iterator_class = load_class(config['video_path_iterator'])
+  video_path_iterator = video_path_iterator_class()
 
   # We use different client implementations for different mean intervals
   if args.mean_interval_ms > 0:
