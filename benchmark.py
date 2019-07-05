@@ -195,15 +195,24 @@ if __name__ == '__main__':
                                      args.per_gpu_queue)
   filename_queue = benchmark_queues.get_filename_queue()
 
-  # TODO create a video_path_provider from configuration.
+  # TODO refactor
+  # load video path provider instance using the given module path
+  video_path_provider_path = pipeline['video_path_provider']
+  delimiter_idx = video_path_provider_path.rfind('.')
+  module_path = video_path_provider_path[:delimiter_idx]
+  model_name = video_path_provider_path[delimiter_idx+1:]
+  module = __import__(module_path, fromlist=(model_name))
+  video_path_provider_class = getattr(module, model_name)
+  video_path_provider = video_path_provider()
+
   # We use different client implementations for different mean intervals
   if args.mean_interval_ms > 0:
     client_impl = poisson_client
-    client_args = (filename_queue, args.mean_interval_ms,
+    client_args = (video_path_provider, filename_queue, args.mean_interval_ms,
                    termination_flag, sta_bar, fin_bar)
   else:
     client_impl = bulk_client
-    client_args = (filename_queue, args.videos, termination_flag,
+    client_args = (video_path_provider, filename_queue, args.videos, termination_flag,
                    sta_bar, fin_bar)
   process_client = Process(target=client_impl,
                            args=client_args)

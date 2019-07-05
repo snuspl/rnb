@@ -1,12 +1,16 @@
-[
-  {
-    "model": "models.r2p1d.model.R2P1DLoader",
-    "gpus": [0]
-  },
-  {
-    "model": "models.r2p1d.model.R2P1DRunner",
-    "gpus": [0],
-    "start_index": 1,
-    "end_index": 5
-  }
-]
+{
+  "video_path_provider": "models.r2p1d.model.R2P1DVideoPathProvider",
+  "pipeline": [
+    {
+      
+      "model": "models.r2p1d.model.R2P1DLoader",
+      "gpus": [0]
+    },
+    {
+      "model": "models.r2p1d.model.R2P1DRunner",
+      "gpus": [0],
+      "start_index": 1,
+      "end_index": 5
+    }
+  ]
+}
