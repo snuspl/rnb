@@ -8,19 +8,7 @@ bulk_client that generates requests for all videos at once.
 """
 NUM_EXIT_MARKERS = 10
 
-def load_videos(video_path_provider):
-  """Helper function that reads video names from a hard-coded file path."""
-  # PyTorch seems to have an issue with sharing modules between
-  # multiple processes, so we just do the imports here and
-  # not at the top of the file
-  import os
-
-  videos = video_path_provider.get_paths()
-  if len(videos) <= 0:
-    raise Exception('No video available.')
-  return videos
-
-def poisson_client(filename_queue, beta, termination_flag,
+def poisson_client(video_path_iterator, filename_queue, beta, termination_flag,
                    sta_bar, fin_bar):
   """Sends loaded video to the filename queue, one at a time.
 
@@ -38,17 +26,21 @@ def poisson_client(filename_queue, beta, termination_flag,
   sta_bar.wait()
   
   video_idx = 0
-  while termination_flag.value == TerminationFlag.UNSET:
-    video = videos[video_idx]
+
+  for video_path in video_path_iterator:
+    if termination_flag.value != TerminationFlag.UNSET:
+      break
+
+    #video = videos[video_idx]
     # come back to the front of the list if we're at the end
-    video_idx = (video_idx + 1) % len(videos)
+    #video_idx = (video_idx + 1) % len(videos)
 
     # create TimeCard instance to measure the time of key events
     time_card = TimeCard()
     time_card.record('enqueue_filename')
 
     try:
-      filename_queue.put_nowait((video, time_card))
+      filename_queue.put_nowait((video_path, time_card))
     except Full:
       print('[WARNING] Filename queue is full. Aborting...')
       termination_flag.value = TerminationFlag.FILENAME_QUEUE_FULL
@@ -70,7 +62,7 @@ def poisson_client(filename_queue, beta, termination_flag,
   fin_bar.wait()
   filename_queue.cancel_join_thread()
 
-def bulk_client(filename_queue, num_videos, termination_flag,
+def bulk_client(video_path_iterator, filename_queue, num_videos, termination_flag,
                 sta_bar, fin_bar):
   """Sends videos to the filename queue in bulk, as many as specified by the argument num_videos.
 
@@ -81,14 +73,14 @@ def bulk_client(filename_queue, num_videos, termination_flag,
   from control import TerminationFlag
   from rnb_logging import TimeCard
 
-  videos = load_videos()
-
   sta_bar.wait()
 
   video_count = 0
-  while video_count < num_videos:
+  for video_path in video_path_iterator:
+    if video_count >= num_videos:
+      break
     # come back to the front of the list if we're at the end
-    video = videos[video_count % len(videos)]
+#    video = videos[video_count % len(videos)]
     video_count += 1
 
     # create TimeCard instance to measure the time of key events
@@ -96,7 +88,7 @@ def bulk_client(filename_queue, num_videos, termination_flag,
     time_card.record('enqueue_filename')
 
     try:
-      filename_queue.put_nowait((video, time_card))
+      filename_queue.put_nowait((video_path, time_card))
     except Full:
       print('[WARNING] Filename queue is full. Aborting...')
       termination_flag.value = TerminationFlag.FILENAME_QUEUE_FULL
