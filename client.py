@@ -22,8 +22,6 @@ def poisson_client(video_path_iterator, filename_queue, beta, termination_flag,
   from rnb_logging import TimeCard
 
   sta_bar.wait()
-  
-  video_idx = 0
 
   for video_path in video_path_iterator:
     if termination_flag.value != TerminationFlag.UNSET:
