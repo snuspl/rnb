@@ -46,8 +46,8 @@ def sanity_check(args):
   # Case 1: Check the format of the pipeline configuration file
   try:
     with open(args.config_file_path, 'r') as f:
-      pipeline = json.load(f)
-
+      config = json.load(f)
+    pipeline = config['pipeline']
     assert isinstance(pipeline, list)
 
     # Track which gpus are going to be used, for case 3.
