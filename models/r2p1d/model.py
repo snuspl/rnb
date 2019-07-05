@@ -8,6 +8,7 @@ from models.r2p1d.sampler import R2P1DSampler
 from models.r2p1d.network import R2Plus1DClassifier, SpatioTemporalResBlock
 from models.r2p1d.network import R2Plus1DLayerWrapper
 from runner_model import RunnerModel
+from video_path_provider import VideoPathIterator
 
 CKPT_PATH = '/cmsdata/ssd0/cmslab/Kinetics-400/ckpt/model_data.pth.tar'
 
