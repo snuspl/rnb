@@ -8,30 +8,14 @@ bulk_client that generates requests for all videos at once.
 """
 NUM_EXIT_MARKERS = 10
 
-def load_videos():
+def load_videos(video_path_provider):
   """Helper function that reads video names from a hard-coded file path."""
   # PyTorch seems to have an issue with sharing modules between
   # multiple processes, so we just do the imports here and
   # not at the top of the file
   import os
 
-  # file directory is assumed to be like:
-  # root/
-  #   label1/
-  #     video1
-  #     video2
-  #     ...
-  #   label2/
-  #     video3
-  #     video4
-  #     ...
-  #   ...
-  root = '/cmsdata/ssd0/cmslab/Kinetics-400/sparta'
-  videos = []
-  for label in os.listdir(root):
-    for video in os.listdir(os.path.join(root, label)):
-      videos.append(os.path.join(root, label, video))
-
+  videos = video_path_provider.get_paths()
   if len(videos) <= 0:
     raise Exception('No video available.')
   return videos

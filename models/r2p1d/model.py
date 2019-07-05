@@ -1,6 +1,7 @@
 import nvvl
 import torch
 import sys 
+import os
 
 from models.r2p1d.sampler import R2P1DSampler
 from models.r2p1d.network import R2Plus1DClassifier, SpatioTemporalResBlock
@@ -67,6 +68,28 @@ class R2P1DRunner(RunnerModel):
 
   def __call__(self, input):
     return self.model(input)
+
+class R2P1DVideoPathProvider(VideoPathProvider):
+  def __init(self):
+    self.videos = []
+    # file directory is assumed to be like:
+    # root/
+    #   label1/
+    #     video1
+    #     video2
+    #     ...
+    #   label2/
+    #     video3
+    #     video4
+    #     ...
+    #   ...
+    root = '/cmsdata/ssd0/cmslab/Kinetics-400/sparta'
+    for label in os.listdir(root):
+      for video in os.listdir(os.path.join(root, label)):
+        self.videos.append(os.path.join(root, label, video))
+
+  def get_paths(self):
+    return self.videos
 
 
 class R2P1DLoader(RunnerModel):

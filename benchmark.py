@@ -195,6 +195,7 @@ if __name__ == '__main__':
                                      args.per_gpu_queue)
   filename_queue = benchmark_queues.get_filename_queue()
 
+  # TODO create a video_path_provider from configuration.
   # We use different client implementations for different mean intervals
   if args.mean_interval_ms > 0:
     client_impl = poisson_client
