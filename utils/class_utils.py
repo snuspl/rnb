@@ -1,5 +1,3 @@
-import sys
-
 def load_class(full_class_path):
     """Loads a class object from a full path to the class. 
     """
