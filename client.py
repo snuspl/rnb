@@ -21,8 +21,6 @@ def poisson_client(video_path_iterator, filename_queue, beta, termination_flag,
   from control import TerminationFlag
   from rnb_logging import TimeCard
 
-  videos = load_videos()
-
   sta_bar.wait()
   
   video_idx = 0
@@ -30,10 +28,6 @@ def poisson_client(video_path_iterator, filename_queue, beta, termination_flag,
   for video_path in video_path_iterator:
     if termination_flag.value != TerminationFlag.UNSET:
       break
-
-    #video = videos[video_idx]
-    # come back to the front of the list if we're at the end
-    #video_idx = (video_idx + 1) % len(videos)
 
     # create TimeCard instance to measure the time of key events
     time_card = TimeCard()
@@ -79,8 +73,7 @@ def bulk_client(video_path_iterator, filename_queue, num_videos, termination_fla
   for video_path in video_path_iterator:
     if video_count >= num_videos:
       break
-    # come back to the front of the list if we're at the end
-#    video = videos[video_count % len(videos)]
+
     video_count += 1
 
     # create TimeCard instance to measure the time of key events
