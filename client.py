@@ -24,7 +24,7 @@ def poisson_client(video_path_iterator, filename_queue, beta, termination_flag,
 
   sta_bar.wait()
 
-  for video_path in load_class(video_path_iterator).__init__():
+  for video_path in load_class(video_path_iterator)():
     if termination_flag.value != TerminationFlag.UNSET:
       break
 
@@ -55,7 +55,7 @@ def poisson_client(video_path_iterator, filename_queue, beta, termination_flag,
   fin_bar.wait()
   filename_queue.cancel_join_thread()
 
-def bulk_client(video_path_iterator_class, filename_queue, num_videos, termination_flag,
+def bulk_client(video_path_iterator, filename_queue, num_videos, termination_flag,
                 sta_bar, fin_bar):
   """Sends videos to the filename queue in bulk, as many as specified by the argument num_videos.
 
@@ -70,7 +70,7 @@ def bulk_client(video_path_iterator_class, filename_queue, num_videos, terminati
   sta_bar.wait()
 
   video_count = 0
-  for video_path in load_class(video_path_iterator).__init__():
+  for video_path in load_class(video_path_iterator)():
     if video_count >= num_videos:
       break
 
