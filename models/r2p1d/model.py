@@ -100,9 +100,6 @@ class R2P1DVideoPathIterator(VideoPathIterator):
   def __iter__(self):
     return self.videos_iter
 
-  def __next__(self):
-    return next(self.videos_iter)
-
 
 class R2P1DLoader(RunnerModel):
   """Impl of loading video frames using NVVL, for the R(2+1)D model."""

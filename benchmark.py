@@ -197,18 +197,16 @@ if __name__ == '__main__':
                                      args.per_gpu_queue)
   filename_queue = benchmark_queues.get_filename_queue()
 
-  # load video path iterator using the given path
-  video_path_iterator_class = load_class(config['video_path_iterator'])
-  video_path_iterator = video_path_iterator_class()
+  video_path_iterator_class = config['video_path_iterator']
 
   # We use different client implementations for different mean intervals
   if args.mean_interval_ms > 0:
     client_impl = poisson_client
-    client_args = (video_path_iterator, filename_queue, args.mean_interval_ms,
+    client_args = (video_path_iterator_class, filename_queue, args.mean_interval_ms,
                    termination_flag, sta_bar, fin_bar)
   else:
     client_impl = bulk_client
-    client_args = (video_path_iterator, filename_queue, args.videos, termination_flag,
+    client_args = (video_path_iterator_class, filename_queue, args.videos, termination_flag,
                    sta_bar, fin_bar)
   process_client = Process(target=client_impl,
                            args=client_args)
