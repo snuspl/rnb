@@ -126,7 +126,6 @@ if __name__ == '__main__':
   import shutil
   import time
   from arg_utils import *
-  from utils.class_utils import load_class
   from datetime import datetime as dt
   from torch.multiprocessing import Queue, Process, Value, Barrier
 

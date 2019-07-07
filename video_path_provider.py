@@ -5,5 +5,10 @@ class VideoPathIterator:
     pass
 
   def __iter__(self):
-    """Returns the iterator object."""
-    return self
+    """Returns the iterator object.
+
+    We highly recommend using itertools.cycle to let the benchmark processes
+    the desired number of videos regardless of the number of existing
+    videos in the file system.
+    """
+    raise NotImplementedError
