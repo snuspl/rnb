@@ -7,7 +7,7 @@ class VideoPathIterator:
   def __iter__(self):
     """Returns the iterator object.
 
-    We highly recommend using itertools.cycle to let the benchmark processes
+    We highly recommend using itertools.cycle to let the benchmark process
     the desired number of videos regardless of the number of existing
     videos in the file system.
     """
