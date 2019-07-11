@@ -46,8 +46,8 @@ def sanity_check(args):
   # Case 1: Check the format of the pipeline configuration file
   try:
     with open(args.config_file_path, 'r') as f:
-      pipeline = json.load(f)
-
+      config = json.load(f)
+    pipeline = config['pipeline']
     assert isinstance(pipeline, list)
 
     # Track which gpus are going to be used, for case 3.
@@ -167,7 +167,8 @@ if __name__ == '__main__':
 
   # do a quick pass through the pipeline to count the total number of runners
   with open(args.config_file_path, 'r') as f:
-    pipeline = json.load(f)
+    config = json.load(f)
+  pipeline = config['pipeline']
   num_runners = sum([len(step['gpus']) for step in pipeline])
 
   # total num of processes
@@ -196,14 +197,16 @@ if __name__ == '__main__':
                                      args.per_gpu_queue)
   filename_queue = benchmark_queues.get_filename_queue()
 
+  video_path_iterator = config['video_path_iterator']
+
   # We use different client implementations for different mean intervals
   if args.mean_interval_ms > 0:
     client_impl = poisson_client
-    client_args = (filename_queue, args.mean_interval_ms,
+    client_args = (video_path_iterator, filename_queue, args.mean_interval_ms,
                    termination_flag, sta_bar, fin_bar)
   else:
     client_impl = bulk_client
-    client_args = (filename_queue, args.videos, termination_flag,
+    client_args = (video_path_iterator, filename_queue, args.videos, termination_flag,
                    sta_bar, fin_bar)
   process_client = Process(target=client_impl,
                            args=client_args)

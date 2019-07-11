@@ -17,6 +17,7 @@ def runner(input_queue, output_queue,
   from tqdm import tqdm
   from rnb_logging import logname, TimeCardSummary
   from control import TerminationFlag
+  from utils.class_utils import load_class
 
   # Use our own CUDA stream to avoid synchronizing with other processes
   with torch.cuda.device(g_idx):
@@ -33,12 +34,7 @@ def runner(input_queue, output_queue,
         insurance = torch.randn(1, device=torch.device('cuda:0'))
 
         # load model instance using the given module path
-        delimiter_idx = model_module_path.rfind('.')
-        module_path = model_module_path[:delimiter_idx]
-        model_name = model_module_path[delimiter_idx+1:]
-        module = __import__(module_path, fromlist=(model_name))
-        model_class = getattr(module, model_name)
-
+        model_class = load_class(model_module_path)
         model = model_class(device, **model_kwargs)
 
         sta_bar.wait()

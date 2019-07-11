@@ -1,11 +1,14 @@
 import nvvl
 import torch
 import sys 
+import os
+from itertools import cycle
 
 from models.r2p1d.sampler import R2P1DSampler
 from models.r2p1d.network import R2Plus1DClassifier, SpatioTemporalResBlock
 from models.r2p1d.network import R2Plus1DLayerWrapper
 from runner_model import RunnerModel
+from video_path_provider import VideoPathIterator
 
 CKPT_PATH = '/cmsdata/ssd0/cmslab/Kinetics-400/ckpt/model_data.pth.tar'
 
@@ -67,6 +70,35 @@ class R2P1DRunner(RunnerModel):
 
   def __call__(self, input):
     return self.model(input)
+
+class R2P1DVideoPathIterator(VideoPathIterator):
+  def __init__(self):
+    super(R2P1DVideoPathIterator, self).__init__()
+
+    videos = []
+    # file directory is assumed to be like:
+    # root/
+    #   label1/
+    #     video1
+    #     video2
+    #     ...
+    #   label2/
+    #     video3
+    #     video4
+    #     ...
+    #   ...
+    root = '/cmsdata/ssd0/cmslab/Kinetics-400/sparta'
+    for label in os.listdir(root):
+      for video in os.listdir(os.path.join(root, label)):
+        videos.append(os.path.join(root, label, video))
+
+    if len(videos) <= 0:
+      raise Exception('No video available.')
+
+    self.videos_iter = cycle(videos)
+
+  def __iter__(self):
+    return self.videos_iter
 
 
 class CloneRunner(RunnerModel):
