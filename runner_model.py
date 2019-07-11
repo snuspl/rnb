@@ -17,8 +17,8 @@ class RunnerModel:
     """Returns the expected shape of the input tensor to this model."""
     raise NotImplementedError
 
-  def __call__(self, input):
-    """Perform inference on this model with the given input.
+  def __call__(self, context):
+    """Perform inference on this model with the given context.
 
     We purposely follow PyTorch's convention of using __call__ for inference.
     """

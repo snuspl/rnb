@@ -17,6 +17,7 @@ def runner(input_queue, output_queue, print_summary,
   from tqdm import tqdm
   from rnb_logging import logname, TimeCardSummary
   from control import TerminationFlag
+  from context import Context
   from utils.class_utils import load_class
 
   # Use our own CUDA stream to avoid synchronizing with other processes
@@ -50,18 +51,19 @@ def runner(input_queue, output_queue, print_summary,
           old_global_inference_counter_value = 0
 
         while termination_flag.value == TerminationFlag.UNSET:
-          tpl = input_queue.get()
-          if tpl is None:
+          context = input_queue.get()
+          if context is None:
             break
 
-          tensor, time_card = tpl
+          tensors = context.tensors
+          time_card = context.time_card
           time_card.record('runner%d_start' % step_idx)
 
-          if isinstance(tensor, torch.Tensor) and tensor.device != device:
-            tensor = tensor.to(device=device)
+          if isinstance(tensors, torch.Tensor) and tensors.device != device:
+            tensors = tensors.to(device=device)
           time_card.record('inference%d_start' % step_idx)
 
-          outputs = model(tensor)
+          output_tensors = model(tensors, context)
           stream.synchronize()
           time_card.record('inference%d_finish' % step_idx)
 
@@ -91,7 +93,8 @@ def runner(input_queue, output_queue, print_summary,
             # this is NOT the final step
             # pass on the intermediate tensor to the next step
             try:
-              output_queue.put_nowait((outputs, time_card))
+              context = Context(output_tensors, time_card)
+              output_queue.put_nowait(context)
             except Full:
               print('[WARNING] Queue between runner step %d and %d is full. '
                     'Aborting...' % (step_idx, step_idx+1))

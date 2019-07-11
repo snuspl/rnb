@@ -33,7 +33,8 @@ def poisson_client(video_path_iterator, filename_queue, beta, termination_flag,
     time_card.record('enqueue_filename')
 
     try:
-      filename_queue.put_nowait((video_path, time_card))
+      context = Context(video_path, time_card)
+      filename_queue.put_nowait(context)
     except Full:
       print('[WARNING] Filename queue is full. Aborting...')
       termination_flag.value = TerminationFlag.FILENAME_QUEUE_FULL
@@ -81,7 +82,8 @@ def bulk_client(video_path_iterator, filename_queue, num_videos, termination_fla
     time_card.record('enqueue_filename')
 
     try:
-      filename_queue.put_nowait((video_path, time_card))
+      context = Context(video_path, time_card)
+      filename_queue.put_nowait(context)
     except Full:
       print('[WARNING] Filename queue is full. Aborting...')
       termination_flag.value = TerminationFlag.FILENAME_QUEUE_FULL
