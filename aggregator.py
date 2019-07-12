@@ -27,6 +27,7 @@ def aggregator(aggregator_queue, num_videos, gpus,
 
         tensor, time_card = tpl
         time_card.record('aggregator_start')
+        s.append(tensor)
         # print(tensor.shape, tensor.dtype, tensor.device)
 
         # if time_card.id not in tensors:

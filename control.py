@@ -1,3 +1,8 @@
+import torch
+from torch.multiprocessing import Event
+from utils.class_utils import load_class
+
+
 class TerminationFlag:
   """An enum class for representing various termination states."""
   UNSET = -1
@@ -82,3 +87,32 @@ class BenchmarkQueues:
 
   def get_aggregator_queue(self):
     return self.aggregator_queue
+
+
+class ProtectedTensor:
+  def __init__(self, shape, device, dtype=torch.float32):
+    self.tensor = torch.empty(*shape, dtype=dtype, device=device)
+    self.event = Event()
+    self.event.set()
+
+  def __str__(self):
+    return str(self.tensor)
+
+
+class BenchmarkTensors:
+  def __init__(self, pipeline, num_tensors_per_process):
+    self.tensors = []
+
+    for step in pipeline:
+      step_tensors = []
+
+      model_module_path = step['model']
+      model_class = load_class(model_module_path)
+      shape = model_class.output_shape()
+      for gpu in step['gpus']:
+        device = torch.device('cuda:%d' % gpu)
+        tensors = [ProtectedTensor(shape, device)
+                   for _ in range(num_tensors_per_process)]
+        step_tensors.append(tensors)
+
+      self.tensors.append(step_tensors)

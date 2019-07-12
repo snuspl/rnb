@@ -131,7 +131,7 @@ if __name__ == '__main__':
 
   # change these if you want to use different client/loader/runner impls
   from rnb_logging import logmeta, logroot
-  from control import TerminationFlag, BenchmarkQueues
+  from control import TerminationFlag, BenchmarkQueues, BenchmarkTensors
   from client import *
   from runner import runner
   from aggregator import aggregator
@@ -211,7 +211,6 @@ if __name__ == '__main__':
   process_client = Process(target=client_impl,
                            args=client_args)
 
-
   final_runner_gpus = set(pipeline[-1]['gpus'])
   aggregator_queue = benchmark_queues.get_aggregator_queue()
   process_aggregator = Process(target=aggregator,
@@ -219,6 +218,11 @@ if __name__ == '__main__':
                                      final_runner_gpus,
                                      job_id, termination_flag,
                                      sta_bar, fin_bar))
+
+  benchmark_tensors = BenchmarkTensors(pipeline, 4)
+  print(benchmark_tensors.tensors)
+  import sys
+  sys.exit()
 
   process_runner_list = []
   for step_idx, step in enumerate(pipeline):
@@ -245,7 +249,7 @@ if __name__ == '__main__':
                                      job_id, gpu, replica_idx,
                                      termination_flag, step_idx,
                                      sta_bar, fin_bar,
-                                     model),
+                                     model, benchmark_tensors.tensors),
                                kwargs=step)
 
       replica_dict[gpu] = replica_idx + 1
