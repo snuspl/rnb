@@ -131,7 +131,7 @@ if __name__ == '__main__':
 
   # change these if you want to use different client/loader/runner impls
   from rnb_logging import logmeta, logroot
-  from control import TerminationFlag, BenchmarkQueues
+  from control import TerminationFlag, BenchmarkQueues, BenchmarkTensors
   from client import *
   from runner import runner
 
@@ -152,17 +152,21 @@ if __name__ == '__main__':
   parser.add_argument('-p', '--per_gpu_queue',
                       help='Whether to place intermediate queues on each GPU',
                       action='store_true')
+  parser.add_argument('-t', '--tensors_per_process',
+                      help='Number of shared output tensors per process',
+                      type=positive_int, default=100)
   args = parser.parse_args()
   print('Args:', args)
   
   sanity_check(args)
 
-  job_id = '%s-mi%d-b%d-v%d-qs%d-p%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
-                                         args.mean_interval_ms,
-                                         args.batch_size,
-                                         args.videos,
-                                         args.queue_size,
-                                         args.per_gpu_queue)
+  job_id = '%s-mi%d-b%d-v%d-qs%d-p%d-t%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
+                                             args.mean_interval_ms,
+                                             args.batch_size,
+                                             args.videos,
+                                             args.queue_size,
+                                             args.per_gpu_queue,
+                                             args.tensors_per_process)
 
   # do a quick pass through the pipeline to count the total number of runners
   with open(args.config_file_path, 'r') as f:
@@ -210,6 +214,9 @@ if __name__ == '__main__':
   process_client = Process(target=client_impl,
                            args=client_args)
 
+  # create BenchmarkTensors object for managing shared tensors between steps
+  benchmark_tensors = BenchmarkTensors(pipeline, args.tensors_per_process)
+
   process_runner_list = []
   for step_idx, step in enumerate(pipeline):
     is_final_step = step_idx == len(pipeline) - 1
@@ -224,6 +231,9 @@ if __name__ == '__main__':
 
       prev_queue, next_queue = benchmark_queues.get_tensor_queue(step_idx, gpu)
 
+      shared_input_tensors, shared_output_tensors = \
+          benchmark_tensors.get_shared_tensors(step_idx, instance_idx)
+
       # check the replica index of this particular runner, for this gpu
       # if this runner is the first, then give it index 0
       replica_idx = replica_dict.get(gpu, 0)
@@ -236,11 +246,12 @@ if __name__ == '__main__':
       process_runner = Process(target=runner,
                                args=(prev_queue, next_queue,
                                      print_summary,
-                                     job_id, gpu, replica_idx,
+                                     job_id, gpu, replica_idx, instance_idx,
                                      global_inference_counter, args.videos,
                                      termination_flag, step_idx,
                                      sta_bar, fin_bar,
-                                     model),
+                                     model, shared_input_tensors,
+                                     shared_output_tensors),
                                kwargs=step)
 
       replica_dict[gpu] = replica_idx + 1

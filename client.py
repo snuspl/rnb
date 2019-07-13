@@ -38,7 +38,7 @@ def poisson_client(video_path_iterator, filename_queue, beta, termination_flag,
       print('[WARNING] Filename queue is full. Aborting...')
       termination_flag.value = TerminationFlag.FILENAME_QUEUE_FULL
       break
-    time.sleep(exponential(float(beta) / 1000)) # milliseconds --> seconds
+    time.sleep(float(beta) / 1000) # milliseconds --> seconds
 
   # mark the end of the input stream
   # the loaders should exit by themselves, but we enqueue these markers just in

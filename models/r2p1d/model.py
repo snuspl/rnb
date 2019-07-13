@@ -68,6 +68,12 @@ class R2P1DRunner(RunnerModel):
   def input_shape(self):
     return self.input_dict[self.start_index]
 
+  @staticmethod
+  def output_shape():
+    # TODO: the output shape may not be (10, 400), depending on self.end_index
+    # need to change return value accordingly
+    return (10, 400)
+
   def __call__(self, input):
     return self.model(input)
 
@@ -134,6 +140,13 @@ class R2P1DLoader(RunnerModel):
   def __del__(self):
     self.loader.close()
 
+  def input_shape(self):
+    return None
+
+  @staticmethod
+  def output_shape():
+    return (10, 3, 8, 112, 112)
+
 
 class R2P1DSingleStep(RunnerModel):
   """RunnerModel impl that contains all inference logic regarding R(2+1)D.
@@ -199,3 +212,10 @@ class R2P1DSingleStep(RunnerModel):
 
   def __del__(self):
     self.loader.close()
+
+  def input_shape(self):
+    return None
+
+  @staticmethod
+  def output_shape():
+    return (10, 400)

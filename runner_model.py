@@ -17,6 +17,11 @@ class RunnerModel:
     """Returns the expected shape of the input tensor to this model."""
     raise NotImplementedError
 
+  @staticmethod
+  def output_shape():
+    """Returns the expected shape of the output tensor of this model."""
+    raise NotImplementedError
+
   def __call__(self, input):
     """Perform inference on this model with the given input.
 
