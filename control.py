@@ -1,4 +1,5 @@
 import torch
+from collections import namedtuple
 from torch.multiprocessing import Event
 from utils.class_utils import load_class
 
@@ -95,13 +96,13 @@ class ProtectedTensor:
     self.event = Event()
     self.event.set()
 
-  def __str__(self):
-    return str(self.tensor)
+  def __repr__(self):
+    return 'ProtectedTensor (%s, %s)' % (self.tensor.shape, self.tensor.device)
 
 
 class BenchmarkTensors:
   def __init__(self, pipeline, num_tensors_per_process):
-    self.tensors = []
+    self.tensors = [None]
 
     for step in pipeline:
       step_tensors = []
@@ -109,6 +110,7 @@ class BenchmarkTensors:
       model_module_path = step['model']
       model_class = load_class(model_module_path)
       shape = model_class.output_shape()
+
       for gpu in step['gpus']:
         device = torch.device('cuda:%d' % gpu)
         tensors = [ProtectedTensor(shape, device)
@@ -116,3 +118,10 @@ class BenchmarkTensors:
         step_tensors.append(tensors)
 
       self.tensors.append(step_tensors)
+
+  def get_shared_tensors(self, step_idx, instance_idx):
+    return self.tensors[step_idx + 1][instance_idx], \
+           self.tensors[step_idx]
+
+
+Signal = namedtuple('Signal', ['instance_idx', 'tensor_idx'])

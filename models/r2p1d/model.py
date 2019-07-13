@@ -156,6 +156,9 @@ class R2P1DLoader(RunnerModel):
   def __del__(self):
     self.loader.close()
 
+  def input_shape(self):
+    return None
+
   @staticmethod
   def output_shape():
     return (10, 3, 8, 112, 112)
@@ -225,6 +228,9 @@ class R2P1DSingleStep(RunnerModel):
 
   def __del__(self):
     self.loader.close()
+
+  def input_shape(self):
+    return None
 
   @staticmethod
   def output_shape():

@@ -1,4 +1,4 @@
-def aggregator(aggregator_queue, num_videos, gpus,
+def aggregator(aggregator_queue, shared_input_tensors, num_videos, gpus,
                job_id, termination_flag, sta_bar, fin_bar):
   import time
   import torch
@@ -25,9 +25,9 @@ def aggregator(aggregator_queue, num_videos, gpus,
         if tpl is None:
           break
 
-        tensor, time_card = tpl
+        signal, time_card = tpl
         time_card.record('aggregator_start')
-        s.append(tensor)
+        shared_input_tensors[signal.instance_idx][signal.tensor_idx].event.set()
         # print(tensor.shape, tensor.dtype, tensor.device)
 
         # if time_card.id not in tensors:
@@ -51,6 +51,13 @@ def aggregator(aggregator_queue, num_videos, gpus,
           print('Finished processing %d videos' % num_videos)
           termination_flag.value = TerminationFlag.TARGET_NUM_VIDEOS_REACHED
 
+
+  
+
+      if shared_input_tensors is not None:
+        for instance_tensors in shared_input_tensors:
+          for protected_tensor in instance_tensors:
+            protected_tensor.event.set()
 
   fin_bar.wait()
 

@@ -211,18 +211,18 @@ if __name__ == '__main__':
   process_client = Process(target=client_impl,
                            args=client_args)
 
+  benchmark_tensors = BenchmarkTensors(pipeline, 100)
+
+
   final_runner_gpus = set(pipeline[-1]['gpus'])
   aggregator_queue = benchmark_queues.get_aggregator_queue()
   process_aggregator = Process(target=aggregator,
-                               args=(aggregator_queue, args.videos,
+                               args=(aggregator_queue, benchmark_tensors.tensors[-1],
+                                     args.videos,
                                      final_runner_gpus,
                                      job_id, termination_flag,
                                      sta_bar, fin_bar))
 
-  benchmark_tensors = BenchmarkTensors(pipeline, 4)
-  print(benchmark_tensors.tensors)
-  import sys
-  sys.exit()
 
   process_runner_list = []
   for step_idx, step in enumerate(pipeline):
@@ -242,14 +242,18 @@ if __name__ == '__main__':
       # if this runner is the first, then give it index 0
       replica_idx = replica_dict.get(gpu, 0)
 
+      shared_output_tensors, shared_input_tensors = \
+          benchmark_tensors.get_shared_tensors(step_idx, instance_idx)
+
       # the last two queues in `queues` are
       # the input and output queue for this step, respectively
       process_runner = Process(target=runner,
                                args=(prev_queue, next_queue,
-                                     job_id, gpu, replica_idx,
+                                     job_id, gpu, instance_idx,
                                      termination_flag, step_idx,
                                      sta_bar, fin_bar,
-                                     model, benchmark_tensors.tensors),
+                                     model, shared_output_tensors,
+                                     shared_input_tensors),
                                kwargs=step)
 
       replica_dict[gpu] = replica_idx + 1

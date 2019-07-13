@@ -3,10 +3,10 @@
 NUM_EXIT_MARKERS = 10
 NUM_SUMMARY_SKIPS = 10
 def runner(input_queue, output_queue,
-           job_id, g_idx, r_idx,
+           job_id, g_idx, instance_idx,
            termination_flag, step_idx,
            sta_bar, fin_bar,
-           model_module_path, shared_tensors,
+           model_module_path, shared_output_tensors, shared_input_tensors,
            **model_kwargs):
   # PyTorch seems to have an issue with sharing modules between
   # multiple processes, so we just do the imports here and
@@ -16,7 +16,7 @@ def runner(input_queue, output_queue,
   from queue import Empty, Full
   from tqdm import tqdm
   from rnb_logging import logname, TimeCardSummary
-  from control import TerminationFlag
+  from control import TerminationFlag, Signal
   from utils.class_utils import load_class
 
   # Use our own CUDA stream to avoid synchronizing with other processes
@@ -33,27 +33,31 @@ def runner(input_queue, output_queue,
         # TODO #2: Update PyTorch version
         insurance = torch.randn(1, device=torch.device('cuda:0'))
 
+
         # load model instance using the given module path
         model_class = load_class(model_module_path)
         model = model_class(device, **model_kwargs)
 
         sta_bar.wait()
 
-        shared_tensor_counter = 0
-        if step_idx == 1:
-          input_placeholder = torch.empty(10, 3, 8, 112, 112, dtype=torch.float32).cuda()
+        output_shared_tensor_counter = 0
+        shape = model.input_shape()
+        if step_idx != 0 and shape is not None:
+          input_placeholder = torch.empty(*shape, dtype=torch.float32).cuda()
+
         while termination_flag.value == TerminationFlag.UNSET:
           tpl = input_queue.get()
           if tpl is None:
             break
 
-          tensor, time_card = tpl
+          signal_or_input, time_card = tpl
           time_card.record('runner%d_start' % step_idx)
 
-          if isinstance(tensor, torch.Tensor) and tensor.device != device:
-            tensor = tensor.to(device=device)
-          if step_idx == 1:
-            protected_tensor = shared_tensors[tensor]
+          if isinstance(signal_or_input, Signal):
+            signal = signal_or_input
+            protected_tensor = \
+                shared_input_tensors[signal.instance_idx][signal.tensor_idx]
+
             try:
               assert not protected_tensor.event.is_set()
             except AssertionError as e:
@@ -61,33 +65,31 @@ def runner(input_queue, output_queue,
                 raise e
               else:
                 break
+
             input_placeholder.copy_(protected_tensor.tensor)
             protected_tensor.event.set()
 
-          time_card.record('inference%d_start' % step_idx)
-
-          if step_idx == 1:
-            outputs = model(input_placeholder)
           else:
-            outputs = model(tensor)
-          if step_idx == 0:
-            protected_tensor = shared_tensors[shared_tensor_counter]
+            input_placeholder = signal_or_input
+
+
+          time_card.record('inference%d_start' % step_idx)
+          outputs = model(input_placeholder)
+          stream.synchronize()
+
+          if shared_output_tensors is not None:
+            protected_tensor = shared_output_tensors[output_shared_tensor_counter]
             protected_tensor.event.wait()
             protected_tensor.tensor.copy_(outputs)
             protected_tensor.event.clear()
-            del outputs
-          del tensor
-          stream.synchronize()
           time_card.record('inference%d_finish' % step_idx)
 
           # this is NOT the final step
           # pass on the intermediate tensor to the next step
           try:
-            if step_idx == 0:
-              output_queue.put_nowait((shared_tensor_counter, time_card))
-              shared_tensor_counter = (shared_tensor_counter + 1) % len(shared_tensors)
-            else:
-              output_queue.put_nowait((outputs, time_card))
+            signal = Signal(instance_idx, output_shared_tensor_counter)
+            output_queue.put_nowait((signal, time_card))
+            output_shared_tensor_counter = (output_shared_tensor_counter + 1) % len(shared_output_tensors)
           except Full:
             print('[WARNING] Queue between runner step %d and %d is full. '
                   'Aborting...' % (step_idx, step_idx+1))
@@ -103,8 +105,10 @@ def runner(input_queue, output_queue,
         except Full:
           pass
 
-        for protected_tensor in shared_tensors:
-          protected_tensor.event.set()
+        if shared_input_tensors is not None:
+          for instance_tensors in shared_input_tensors:
+            for protected_tensor in instance_tensors:
+              protected_tensor.event.set()
 
   fin_bar.wait()
   output_queue.cancel_join_thread()
