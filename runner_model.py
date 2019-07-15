@@ -49,17 +49,21 @@ class RunnerModel:
     """Perform inference on this model with the given input.
 
     We purposely follow PyTorch's convention of using __call__ for inference.
-    The input parameter is a pair of tensor tuples and non-tensor tuples, e.g.,
-    ((tensor1, tensor2, tensor3), (integer, string)). In case the previous step
-    does not provide any tensor outputs, the tensor tuple is set to None. This
-    is also true for non-tensor objects.
+    The input parameter is a pair of tensor tuples and a non-tensor object
+    (which could also be a tuple, but does not necessaily have to be), e.g.,
+    ((tensor1, tensor2, tensor3), string). In case the previous step does not
+    provide any tensor outputs, the tensor tuple is set to None. This is also
+    true for the non-tensor object.
 
     Note that even if there is only one tensor input, the tensor tuple is still
     a tuple and not a standalone tensor object. In that case, one way you can
-    extract the single tensor from `input` is `(tensor,), _ = input`.
+    extract the single tensor from `input` is `(tensor,), _ = input`. This is
+    NOT true for the non-tensor object; the non-tensor output from the previous
+    step can be literally anything.
 
-    This tuple format is the same for the output. For both tensor outputs and
-    non-tensor outputs, make sure to return None if there is no output, and to
-    return a tuple if there is at least one output.
+    This tuple format is the same for the output. For the tensor outputs, make
+    sure to return None if there is no output, and to return a tuple if there
+    is at least one output. Also don't forget to return None for the non-tensor
+    object if you don't have any non-tensor output.
     """
     raise NotImplementedError
