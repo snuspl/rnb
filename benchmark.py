@@ -131,7 +131,7 @@ if __name__ == '__main__':
 
   # change these if you want to use different client/loader/runner impls
   from rnb_logging import logmeta, logroot
-  from control import TerminationFlag, BenchmarkQueues, BenchmarkTensors
+  from control import TerminationFlag, SharedQueues, SharedTensors
   from client import *
   from runner import runner
 
@@ -195,10 +195,10 @@ if __name__ == '__main__':
   # (mean_interval_ms = 0 is a special case where all videos are put in queues at once)
   queue_size = args.queue_size if args.mean_interval_ms > 0 else args.videos + num_runners + 1
 
-  # create BenchmarkQueues object for managing queues between steps
-  benchmark_queues = BenchmarkQueues(Queue, queue_size, pipeline,
-                                     args.per_gpu_queue)
-  filename_queue = benchmark_queues.get_filename_queue()
+  # create SharedQueues object for managing queues between steps
+  shared_queues = SharedQueues(Queue, queue_size, pipeline,
+                                  args.per_gpu_queue)
+  filename_queue = shared_queues.get_filename_queue()
 
   video_path_iterator = config['video_path_iterator']
 
@@ -214,8 +214,8 @@ if __name__ == '__main__':
   process_client = Process(target=client_impl,
                            args=client_args)
 
-  # create BenchmarkTensors object for managing shared tensors between steps
-  benchmark_tensors = BenchmarkTensors(pipeline, args.tensors_per_process)
+  # create SharedTensors object for managing shared tensors between steps
+  shared_tensors = SharedTensors(pipeline, args.tensors_per_process)
 
   process_runner_list = []
   for step_idx, step in enumerate(pipeline):
@@ -229,10 +229,10 @@ if __name__ == '__main__':
     for instance_idx, gpu in enumerate(gpus):
       is_first_instance = instance_idx == 0
 
-      prev_queue, next_queue = benchmark_queues.get_tensor_queue(step_idx, gpu)
+      prev_queue, next_queue = shared_queues.get_tensor_queue(step_idx, gpu)
 
       shared_input_tensors, shared_output_tensors = \
-          benchmark_tensors.get_shared_tensors(step_idx, instance_idx)
+          shared_tensors.get_tensors(step_idx, instance_idx)
 
       # check the replica index of this particular runner, for this gpu
       # if this runner is the first, then give it index 0
