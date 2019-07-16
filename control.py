@@ -1,3 +1,9 @@
+import torch
+from collections import namedtuple
+from torch.multiprocessing import Event
+from utils.class_utils import load_class
+
+
 class TerminationFlag:
   """An enum class for representing various termination states."""
   UNSET = -1
@@ -6,7 +12,7 @@ class TerminationFlag:
   FRAME_QUEUE_FULL = 2
 
 
-class BenchmarkQueues:
+class SharedQueues:
   """Manages intermediate queues that connect steps in the benchmark.
 
   Args:
@@ -78,3 +84,98 @@ class BenchmarkQueues:
 
   def get_filename_queue(self):
     return self.filename_queue
+
+
+class TensorEvent:
+  """Basically a tuple of several torch.Tensors and a multiprocessing.Event.
+
+  The Tensors can be used as "shared tensors" for passing intermediate tensors
+  across processes.
+
+  The Event should be used to signal that the consumer process has finished
+  reading from the Tensors. When writing values to Tensors, the producer
+  process should first check if Tensors are free, by calling event.wait(). If
+  the Tensors are indeed free, then event.wait() will return at once. If not,
+  then event.wait() will block until the consumer process calls event.set().
+  Thus, the consumer should make sure that it calls event.set() AFTER the
+  Tensors' contents have been copied to a safe area, such as the consumer's own
+  local tensors.
+  """
+  def __init__(self, shapes, device, dtype=torch.float32):
+    self.tensors = tuple(torch.empty(*shape, dtype=dtype, device=device)
+                         for shape in shapes)
+    self.event = Event()
+    self.event.set()
+
+
+class SharedTensors:
+  """Manages intermediate tensors that are passed across steps in the benchmark.
+
+  Args:
+    pipeline: The whole pipeline info parsed from the input configuration file
+    num_tensors_per_process: The number of shared output tensors that are given
+        to each process, for writing tensor values. A big value allows
+        processes to produce many tensors before having to block, but requires
+        a lot of GPU memory. A small value saves memory, but results in early
+        blocking. Note that if a step outputs several tensors during each
+        iteration, then this class allocates separate memory for each tensor,
+        but still treats them as one tensor when comparing the count with
+        num_tensors_per_process.
+  """
+  def __init__(self, pipeline, num_tensors_per_process):
+    # self.tensors is a 3-level list of TensorEvents, e.g.,
+    # [
+    #   None,                (the first step does not need shared input tensors)
+    #   [                                    (shared tensors between step 0 & 1)
+    #     [tensorEvent000, tensorEvent001, ...] (outputs of process 0 in step 0)
+    #     [tensorEvent010, tensorEvent011, ...] (outputs of process 1 in step 0)
+    #     [tensorEvent020, tensorEvent021, ...] (outputs of process 2 in step 0)
+    #   ],
+
+    #   [                                    (shared tensors between step 1 & 2)
+    #     [tensorEvent100, tensorEvent101, ...] (outputs of process 0 in step 1)
+    #     [tensorEvent110, tensorEvent111, ...] (outputs of process 1 in step 1)
+    #     [tensorEvent120, tensorEvent121, ...] (outputs of process 2 in step 1)
+    #   ],
+    #   ...,
+    #   [None, None, ...]    (the last step does not need shared output tensors)
+    # ]
+    self.tensors = [None]
+
+    # we exclude the last step since the last step does not need output tensors
+    for step in pipeline[:-1]:
+      # load the model class to check the output tensor shape of this step
+      model_module_path = step['model']
+      model_class = load_class(model_module_path)
+      shapes = model_class.output_shape()
+
+      if shapes is None:
+        # this step does not need shared output tensors
+        step_output_tensors = [None for _ in step(['gpus'])]
+
+      else:
+        step_output_tensors = []
+        for gpu in step['gpus']:
+          device = torch.device('cuda:%d' % gpu)
+          tensors = [TensorEvent(shapes, device)
+                     for _ in range(num_tensors_per_process)]
+          step_output_tensors.append(tensors)
+
+      self.tensors.append(step_output_tensors)
+
+    # add Nones as output placeholders for the last step
+    self.tensors.append([None for _ in pipeline[-1]['gpus']])
+
+  def get_tensors(self, step_idx, instance_idx):
+    """Returns the shared input tensors and output tensors for a given process.
+
+    The shared input tensors are returned as a 2-level list, containing the
+    output tensors of all processes of the previous step. On the other hand,
+    the output tensors are returned as a 1-level list, since this process does
+    not need to access the output tensors of other processes from the same step.
+    """
+    return self.tensors[step_idx], self.tensors[step_idx + 1][instance_idx]
+           
+
+# An integer tuple for accessing tensors from SharedTensors.
+Signal = namedtuple('Signal', ['instance_idx', 'tensor_idx'])

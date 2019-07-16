@@ -66,10 +66,17 @@ class R2P1DRunner(RunnerModel):
       stream.synchronize()
     
   def input_shape(self):
-    return self.input_dict[self.start_index]
+    return (self.input_dict[self.start_index],)
+
+  @staticmethod
+  def output_shape():
+    # TODO: the output shape may not be (10, 400), depending on self.end_index
+    # need to change return value accordingly
+    return ((10, 400),)
 
   def __call__(self, input):
-    return self.model(input)
+    (tensor,), _ = input
+    return ((self.model(tensor),), None)
 
 class R2P1DVideoPathIterator(VideoPathIterator):
   def __init__(self):
@@ -122,17 +129,25 @@ class R2P1DLoader(RunnerModel):
     self.loader.flush()
 
   def __call__(self, input):
-    self.loader.loadfile(input)
+    _, filename = input
+    self.loader.loadfile(filename)
     for frames in self.loader:
       pass
     self.loader.flush()
 
     frames = frames.float()
     frames = frames.permute(0, 2, 1, 3, 4)
-    return frames
+    return ((frames,), None)
 
   def __del__(self):
     self.loader.close()
+
+  def input_shape(self):
+    return None
+
+  @staticmethod
+  def output_shape():
+    return ((10, 3, 8, 112, 112),)
 
 
 class R2P1DSingleStep(RunnerModel):
@@ -187,7 +202,8 @@ class R2P1DSingleStep(RunnerModel):
     stream.synchronize()
 
   def __call__(self, input):
-    self.loader.loadfile(input)
+    _, filename = input
+    self.loader.loadfile(filename)
     for frames in self.loader:
       pass
     self.loader.flush()
@@ -195,7 +211,14 @@ class R2P1DSingleStep(RunnerModel):
     frames = frames.float()
     frames = frames.permute(0, 2, 1, 3, 4)
 
-    return self.model(frames)
+    return ((self.model(frames),), None)
 
   def __del__(self):
     self.loader.close()
+
+  def input_shape(self):
+    return None
+
+  @staticmethod
+  def output_shape():
+    return ((10, 400),)
