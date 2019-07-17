@@ -73,8 +73,8 @@ def runner(input_queue, output_queue, print_summary,
 
           if signal is not None:
             # we need to copy values from the designated shared input tensor
-            instance_idx, tensor_idx = signal
-            tensor_event = shared_input_tensors[instance_idx][tensor_idx]
+            signal_instance_idx, tensor_idx = signal
+            tensor_event = shared_input_tensors[signal_instance_idx][tensor_idx]
 
             # Under normal circumstances, the event should not be set yet.
             # However, this may not be true if the job is terminating, in which
