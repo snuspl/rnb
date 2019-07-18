@@ -1,0 +1,17 @@
+{
+  "video_path_iterator": "models.jsfusion.model.JsFusionVideoPathIterator",
+  "pipeline": [
+  {
+      "model": "models.jsfusion.model.JsFusionLoader",
+      "gpus": [0]
+  },
+  {
+      "model": "models.jsfusion.model.ResNetRunner",
+      "gpus": [0]
+  },
+  {
+      "model": "models.jsfusion.model.MCModelRunner",
+      "gpus": [0]
+  }
+  ]
+}
