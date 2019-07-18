@@ -70,7 +70,7 @@ class JsFusionLoader(RunnerModel):
     # frames: (40, 3, 224, 224)
     
     filename = os.path.basename(file_path)
-    out = (frames, filename)
+    out = ((frames,), filename)
     return out
 
   def __del__(self):
