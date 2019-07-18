@@ -434,27 +434,18 @@ class MCModel(torch.nn.Module):
       indices = [word2idx[w] for w in
                  sentence_to_words(sentence)
                  if w in word2idx]
-      length = min(len(indices), max_length)
-      return indices[:length]
+      if len(indices) >= max_length:
+          return indices[:len(indices)]
+      else:
+          return indices + [0] * (max_length - len(indices))
 
     with open(mc, 'r') as f:
       sentences = [sentence_to_matrix(word2idx, f.readline().strip(), max_length)
                    for _ in range(5)]
   
-    sentences_tmps = []
-    for sent in sentences:
-      sentences_tmps.append(sent + [0] * (max_length - len(sent)))
-    sentences = sentences_tmps
-  
-    sentence_masks = []
-    for sent in sentences:
-      sentence_masks.append([(1 if s != 0 else 0) for s in sent])
-  
     sentences = np.asarray(sentences, dtype=np.int32)
     sentences = np.reshape(sentences, (1, 5, -1))
-  
-    sentence_masks = np.asarray(sentence_masks, dtype=np.float32)
-    sentence_masks = np.reshape(sentence_masks, (1, 5, -1))
+    sentence_masks = (sentences > 0).astype(np.float16)
 
     return sentences, sentence_masks
 
