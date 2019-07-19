@@ -152,21 +152,17 @@ if __name__ == '__main__':
   parser.add_argument('-p', '--per_gpu_queue',
                       help='Whether to place intermediate queues on each GPU',
                       action='store_true')
-  parser.add_argument('-t', '--tensors_per_process',
-                      help='Number of shared output tensors per process',
-                      type=positive_int, default=100)
   args = parser.parse_args()
   print('Args:', args)
   
   sanity_check(args)
 
-  job_id = '%s-mi%d-b%d-v%d-qs%d-p%d-t%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
-                                             args.mean_interval_ms,
-                                             args.batch_size,
-                                             args.videos,
-                                             args.queue_size,
-                                             args.per_gpu_queue,
-                                             args.tensors_per_process)
+  job_id = '%s-mi%d-b%d-v%d-qs%d-p%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
+                                         args.mean_interval_ms,
+                                         args.batch_size,
+                                         args.videos,
+                                         args.queue_size,
+                                         args.per_gpu_queue)
 
   # do a quick pass through the pipeline to count the total number of runners
   with open(args.config_file_path, 'r') as f:
@@ -215,7 +211,7 @@ if __name__ == '__main__':
                            args=client_args)
 
   # create SharedTensors object for managing shared tensors between steps
-  shared_tensors = SharedTensors(pipeline, args.tensors_per_process)
+  shared_tensors = SharedTensors(pipeline)
 
   process_runner_list = []
   for step_idx, step in enumerate(pipeline):
