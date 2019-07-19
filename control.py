@@ -3,6 +3,9 @@ from collections import namedtuple
 from torch.multiprocessing import Event
 from utils.class_utils import load_class
 
+# default number of shared tensors given to each process for writing outputs
+DEFAULT_NUM_SHARED_TENSORS = 10
+
 
 class TerminationFlag:
   """An enum class for representing various termination states."""
@@ -113,16 +116,8 @@ class SharedTensors:
 
   Args:
     pipeline: The whole pipeline info parsed from the input configuration file
-    num_tensors_per_process: The number of shared output tensors that are given
-        to each process, for writing tensor values. A big value allows
-        processes to produce many tensors before having to block, but requires
-        a lot of GPU memory. A small value saves memory, but results in early
-        blocking. Note that if a step outputs several tensors during each
-        iteration, then this class allocates separate memory for each tensor,
-        but still treats them as one tensor when comparing the count with
-        num_tensors_per_process.
   """
-  def __init__(self, pipeline, num_tensors_per_process):
+  def __init__(self, pipeline):
     # self.tensors is a 3-level list of TensorEvents, e.g.,
     # [
     #   None,                (the first step does not need shared input tensors)
@@ -146,6 +141,12 @@ class SharedTensors:
     for step in pipeline[:-1]:
       # load the model class to check the output tensor shape of this step
       model_module_path = step['model']
+
+      # we purposely do step.pop() instead of step[] in order to remove the
+      # entry from the pipeline dictionary
+      num_tensors_per_process = step.pop('num_shared_tensors',
+                                         DEFAULT_NUM_SHARED_TENSORS)
+
       model_class = load_class(model_module_path)
       shapes = model_class.output_shape()
 
