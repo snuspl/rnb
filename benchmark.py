@@ -134,6 +134,7 @@ if __name__ == '__main__':
   from control import TerminationFlag, SharedQueues, SharedTensors
   from client import *
   from runner import runner
+  from aggregator import aggregator
 
   parser = argparse.ArgumentParser()
   parser.add_argument('-mi', '--mean_interval_ms',
@@ -176,17 +177,13 @@ if __name__ == '__main__':
 
   # total num of processes
   # runners + one client + one main process (this one)
-  bar_total = num_runners + 2
+  bar_total = num_runners + 3
   
   # barrier to ensure all processes start at the same time
   sta_bar = Barrier(bar_total)
   # barrier to ensure all processes finish at the same time
   fin_bar = Barrier(bar_total)
   
-  # global counter for tracking the total number of videos processed
-  # all processes will exit once the counter reaches args.videos
-  global_inference_counter = Value('i', 0)
-
   # global integer flag for checking job termination
   # any process can alter this value to broadcast a termination signal
   termination_flag = Value('i', TerminationFlag.UNSET)
@@ -217,6 +214,16 @@ if __name__ == '__main__':
   # create SharedTensors object for managing shared tensors between steps
   shared_tensors = SharedTensors(pipeline, args.tensors_per_process)
 
+
+  final_runner_gpus = set(pipeline[-1]['gpus'])
+  aggregator_queue = shared_queues.get_aggregator_queue()
+  process_aggregator = Process(target=aggregator,
+                               args=(aggregator_queue, shared_tensors.tensors[-1],
+                                     args.videos,
+                                     final_runner_gpus,
+                                     job_id, termination_flag,
+                                     sta_bar, fin_bar))
+
   process_runner_list = []
   for step_idx, step in enumerate(pipeline):
     is_final_step = step_idx == len(pipeline) - 1
@@ -238,16 +245,12 @@ if __name__ == '__main__':
       # if this runner is the first, then give it index 0
       replica_idx = replica_dict.get(gpu, 0)
 
-      # we only want a single instance of the last step to print summaries
-      print_summary = is_final_step and is_first_instance
-
       # the last two queues in `queues` are
       # the input and output queue for this step, respectively
       process_runner = Process(target=runner,
                                args=(prev_queue, next_queue,
-                                     print_summary,
                                      job_id, gpu, replica_idx, instance_idx,
-                                     global_inference_counter, args.videos,
+                                     args.videos,
                                      termination_flag, step_idx,
                                      sta_bar, fin_bar,
                                      model, shared_input_tensors,
@@ -258,7 +261,7 @@ if __name__ == '__main__':
       process_runner_list.append(process_runner)
 
 
-  for p in [process_client] + process_runner_list:
+  for p in [process_client] + process_runner_list + [process_aggregator]:
     p.start()
 
   sta_bar.wait()
@@ -277,7 +280,7 @@ if __name__ == '__main__':
 
 
   print('Waiting for child processes to return...')
-  for p in [process_client] + process_runner_list:
+  for p in [process_client] + process_runner_list + [process_aggregator]:
     p.join()
   
 

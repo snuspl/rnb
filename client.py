@@ -24,12 +24,14 @@ def poisson_client(video_path_iterator, filename_queue, beta, termination_flag,
 
   sta_bar.wait()
 
+  counter = 0
   for video_path in load_class(video_path_iterator)():
     if termination_flag.value != TerminationFlag.UNSET:
       break
 
     # create TimeCard instance to measure the time of key events
-    time_card = TimeCard()
+    time_card = TimeCard(counter)
+    counter += 1
     time_card.record('enqueue_filename')
 
     try:

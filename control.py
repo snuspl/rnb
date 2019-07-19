@@ -26,6 +26,7 @@ class SharedQueues:
   def __init__(self, queue_class, queue_size, pipeline, per_gpu_queue):
     self.per_gpu_queue = per_gpu_queue
     self.filename_queue = queue_class(queue_size)
+    self.aggregator_queue = queue_class(queue_size)
     self.num_steps = len(pipeline)
 
     # self.tensor_queues is a list of dictionaries, e.g.,
@@ -55,7 +56,7 @@ class SharedQueues:
       self.tensor_queues.insert(0, {gpu: self.filename_queue for gpu in gpus})
 
       # The last step does need an output queue, so we pass None.
-      self.tensor_queues.append({gpu: None for gpu in gpus})
+      self.tensor_queues.append({gpu: self.aggregator_queue for gpu in gpus})
 
     else:
       # There is no need for differentiating queues according to gpu index,
@@ -73,7 +74,7 @@ class SharedQueues:
       self.tensor_queues.insert(0, {0: self.filename_queue})
 
       # The last step does need an output queue, so we pass None.
-      self.tensor_queues.append({0: None})
+      self.tensor_queues.append({0: self.aggregator_queue})
 
   def get_tensor_queue(self, step_idx, gpu_idx):
     queue_idx = gpu_idx if self.per_gpu_queue else 0
@@ -84,6 +85,9 @@ class SharedQueues:
 
   def get_filename_queue(self):
     return self.filename_queue
+
+  def get_aggregator_queue(self):
+    return self.aggregator_queue
 
 
 class TensorEvent:
@@ -143,7 +147,8 @@ class SharedTensors:
     self.tensors = [None]
 
     # we exclude the last step since the last step does not need output tensors
-    for step in pipeline[:-1]:
+    for i, step in enumerate(pipeline):
+      is_final = i == len(pipeline) - 1
       # load the model class to check the output tensor shape of this step
       model_module_path = step['model']
       model_class = load_class(model_module_path)
@@ -154,17 +159,16 @@ class SharedTensors:
         step_output_tensors = [None for _ in step(['gpus'])]
 
       else:
+        og_shape = shapes[0]
+        shapes = ((5, *og_shape[1:]),)
         step_output_tensors = []
         for gpu in step['gpus']:
           device = torch.device('cuda:%d' % gpu)
           tensors = [TensorEvent(shapes, device)
-                     for _ in range(num_tensors_per_process)]
+                     for _ in range(num_tensors_per_process if not is_final else 1)]
           step_output_tensors.append(tensors)
 
       self.tensors.append(step_output_tensors)
-
-    # add Nones as output placeholders for the last step
-    self.tensors.append([None for _ in pipeline[-1]['gpus']])
 
   def get_tensors(self, step_idx, instance_idx):
     """Returns the shared input tensors and output tensors for a given process.

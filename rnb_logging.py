@@ -19,15 +19,33 @@ def logname(job_id, g_idx, r_idx):
   return '%s/g%d-r%d.txt' % (root, g_idx, r_idx)
 
 
+def logcustom(job_id, custom):
+  root = logroot(job_id)
+  return '%s/%s' % (root, custom)
+
 class TimeCard:
   """Wrapper of OrderedDict for representing a list of events w/ timestamps."""
-  def __init__(self):
+  def __init__(self, id):
     self.timings = OrderedDict()
+    self.id = id
 
 
   def record(self, key):
     """Leave a record to indicate the event `key` has occured just now."""
     self.timings[key] = time.time()
+
+
+  def merge(self, tc):
+    for k, v in tc.timings.items():
+      if k in ['enqueue_filename', 'runner0_start', 'inference0_start', 'inference0_finish']:
+        continue
+
+      my_key = '%s-%d' % (k, self.sub_id)
+      their_key = '%s-%d' % (k, tc.sub_id)
+      for sub_id, key, value in sorted([(self.sub_id, my_key, self.timings[k]), (tc.sub_id, their_key, v)]):
+        self.timings[key] = value
+      del self.timings[k]
+
 
 
 class TimeCardSummary:

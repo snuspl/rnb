@@ -2,9 +2,9 @@
 """
 NUM_EXIT_MARKERS = 10
 NUM_SUMMARY_SKIPS = 10
-def runner(input_queue, output_queue, print_summary,
+def runner(input_queue, output_queue,
            job_id, g_idx, r_idx, instance_idx,
-           global_inference_counter, num_videos,
+           num_videos,
            termination_flag, step_idx,
            sta_bar, fin_bar,
            model_module_path, shared_input_tensors, shared_output_tensors,
@@ -16,7 +16,7 @@ def runner(input_queue, output_queue, print_summary,
   import torch
   from queue import Empty, Full
   from tqdm import tqdm
-  from rnb_logging import logname, TimeCardSummary
+  from rnb_logging import logname, TimeCard
   from control import TerminationFlag, Signal
   from utils.class_utils import load_class
 
@@ -39,11 +39,6 @@ def runner(input_queue, output_queue, print_summary,
         model = model_class(device, **model_kwargs)
 
 
-        is_final_step = output_queue is None
-        if is_final_step:
-          # collect incoming time measurements for later logging
-          time_card_summary = TimeCardSummary()
-
         # keep track of the next position to write output tensors
         shared_output_tensor_counter = 0
 
@@ -51,16 +46,13 @@ def runner(input_queue, output_queue, print_summary,
         # In case the model does not provide any tensor shape, then we do not
         # make any placeholders.
         shapes = model.input_shape()
-        if shapes is not None:
+        if shared_input_tensors is not None:
+          tensor_event = shared_input_tensors[0][0]
           tensor_input_placeholder = \
-              tuple(torch.empty(*shape, dtype=torch.float32).cuda()
-                    for shape in shapes)
+              tuple(torch.zeros_like(tensor, device=device)
+                    for tensor in tensor_event.tensors)
 
         sta_bar.wait()
-
-        if print_summary:
-          progress_bar = tqdm(total = num_videos)
-          old_global_inference_counter_value = 0
 
         while termination_flag.value == TerminationFlag.UNSET:
           tpl = input_queue.get()
@@ -101,60 +93,74 @@ def runner(input_queue, output_queue, print_summary,
 
           tensor_outputs, non_tensor_outputs = \
               model((tensor_input_placeholder, non_tensor_inputs))
+
+          if step_idx == 0:
+            splits = ((tensor_outputs[0][:5, :, :, :, :],),
+                      (tensor_outputs[0][5:, :, :, :, :],))
           stream.synchronize()
 
           if shared_output_tensors is not None:
-            # we need to copy the results into a shared output tensor
-            tensor_event = shared_output_tensors[shared_output_tensor_counter]
+            if step_idx == 0:
+              for counter in [0, 1]:
+                tensor_counter = counter + shared_output_tensor_counter
+                tensor_event = shared_output_tensors[tensor_counter]
+                tensor_event.event.wait()
 
-            # check to see if the tensor has been released or not
-            # TODO #59: if this tensor is not ready, then check another one
-            tensor_event.event.wait()
+                for tensor_output, shared_tensor in zip(splits[counter],
+                                                        tensor_event.tensors):
+                  shared_tensor.copy_(tensor_output)
 
-            for tensor_output, shared_tensor in zip(tensor_outputs,
-                                                    tensor_event.tensors):
-              shared_tensor.copy_(tensor_output)
+                tensor_event.event.clear()
 
-            tensor_event.event.clear()
+            else:
+              # we need to copy the results into a shared output tensor
+              tensor_event = shared_output_tensors[shared_output_tensor_counter]
+
+              # check to see if the tensor has been released or not
+              # TODO #59: if this tensor is not ready, then check another one
+              tensor_event.event.wait()
+
+              for tensor_output, shared_tensor in zip(tensor_outputs,
+                                                      tensor_event.tensors):
+                shared_tensor.copy_(tensor_output)
+
+              tensor_event.event.clear()
+
 
           time_card.record('inference%d_finish' % step_idx)
 
 
-          if is_final_step:
-            # increment the inference counter
-            with global_inference_counter.get_lock():
-              global_inference_counter.value += 1
-
-              if print_summary:
-                new_counter_value = global_inference_counter.value
-                if new_counter_value > old_global_inference_counter_value:
-                  progress_bar.update(new_counter_value - old_global_inference_counter_value)
-                  old_global_inference_counter_value = new_counter_value
-
-              if global_inference_counter.value == num_videos:
-                print('Finished processing %d videos' % num_videos)
-                termination_flag.value = TerminationFlag.TARGET_NUM_VIDEOS_REACHED
-              elif global_inference_counter.value > num_videos:
-                # we've already reached our goal; abort immediately
-                break
-
-            time_card_summary.register(time_card)
-
-
-          else:
+          if True:
             # this is NOT the final step
             # pass on the intermediate tensor to the next step
             try:
-              if shared_output_tensors is not None:
-                # pass a Signal object for accessing shared tensors
-                signal = Signal(instance_idx, shared_output_tensor_counter)
-                shared_output_tensor_counter = \
-                    (shared_output_tensor_counter + 1) \
-                    % len(shared_output_tensors)
+              if step_idx != 0:
+                if shared_output_tensors is not None:
+                  # pass a Signal object for accessing shared tensors
+                  signal = Signal(instance_idx, shared_output_tensor_counter)
+
+                  shared_output_tensor_counter = \
+                      (shared_output_tensor_counter + 1) \
+                      % len(shared_output_tensors)
+                else:
+                  # no need to pass any signals, just enqueue empty signal
+                  signal = None
+                output_queue.put_nowait(((signal, non_tensor_outputs), time_card))
+
               else:
-                # no need to pass any signals, just enqueue empty signal
-                signal = None
-              output_queue.put_nowait(((signal, non_tensor_outputs), time_card))
+                signal0 = Signal(instance_idx, shared_output_tensor_counter)
+                signal1 = Signal(instance_idx, shared_output_tensor_counter+1)
+                shared_output_tensor_counter = \
+                    (shared_output_tensor_counter + 2) \
+                    % len(shared_output_tensors)
+
+                time_card.sub_id = 0
+                tc = TimeCard(time_card.id)
+                tc.timings = time_card.timings
+                tc.sub_id = 1
+
+                output_queue.put_nowait(((signal0, non_tensor_outputs), time_card))
+                output_queue.put_nowait(((signal1, non_tensor_outputs), tc))
 
             except Full:
               print('[WARNING] Queue between runner step %d and %d is full. '
@@ -163,8 +169,9 @@ def runner(input_queue, output_queue, print_summary,
               break
 
 
+
         # the termination flag has been raised
-        if not is_final_step:
+        if True:
           # mark the end of the input stream
           try:
             for _ in range(NUM_EXIT_MARKERS):
@@ -182,16 +189,4 @@ def runner(input_queue, output_queue, print_summary,
   fin_bar.wait()
   if output_queue is not None:
     output_queue.cancel_join_thread()
-
-  if is_final_step:
-    # write statistics AFTER the barrier so that
-    # throughput is not affected by unnecessary file I/O
-    with open(logname(job_id, g_idx, r_idx), 'w') as f:
-      time_card_summary.save_full_report(f)
-
-    # quick summary of the statistics gathered
-    # we skip the first few inferences for stable results
-    if print_summary:
-      time_card_summary.print_summary(NUM_SUMMARY_SKIPS)
-      progress_bar.close()
 
