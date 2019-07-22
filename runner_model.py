@@ -45,25 +45,37 @@ class RunnerModel:
     """
     raise NotImplementedError
 
-  def __call__(self, input):
+  def __call__(self, tensors, non_tensors, time_card):
     """Perform inference on this model with the given input.
 
     We purposely follow PyTorch's convention of using __call__ for inference.
-    The input parameter is a pair of tensor tuples and a non-tensor object
-    (which could also be a tuple, but does not necessaily have to be), e.g.,
-    ((tensor1, tensor2, tensor3), string). In case the previous step does not
-    provide any tensor outputs, the tensor tuple is set to None. This is also
-    true for the non-tensor object.
+    The first input parameter is a tuple of tensors. Note that even if there is
+    only one tensor input, this parameter is still a tuple and not a standalone
+    tensor object. In that case, you can extract the single tensor simply by
+    doing `tensor = tensors[0]`. Moreover, this tuple is set to None if no
+    tensor output has been provided by the previous step.
 
-    Note that even if there is only one tensor input, the tensor tuple is still
-    a tuple and not a standalone tensor object. In that case, one way you can
-    extract the single tensor from `input` is `(tensor,), _ = input`. This is
-    NOT true for the non-tensor object; the non-tensor output from the previous
-    step can be literally anything.
+    The second input parameter is a non-tensor object. Unlike the tensor tuple,
+    this parameter does not have any restrictions regarding its type.
+    It could be a tuple, or a primitive string, or anything. This parameter is
+    set to None if no non-tensor output has been given from the previous step.
 
-    This tuple format is the same for the output. For the tensor outputs, make
+    The third input parameter is a TimeCard object which holds various timings
+    regarding this particular inference item. You are allowed to check, use, or
+    even manipulate its contents in case your implementation involves any
+    system-related aspects. Otherwise, it is perfectly fine to completely ignore
+    this.
+
+
+    This format is the same for the output. For the tensor outputs, make
     sure to return None if there is no output, and to return a tuple if there
-    is at least one output. Also don't forget to return None for the non-tensor
-    object if you don't have any non-tensor output.
+    is at least one output. For the non-tensor output, either return an object
+    in any desired format (tuples, lists, and other nested data structures are
+    all allowed), or None if there is no such output. For the TimeCard object,
+    return the input parameter as-is if you did not touch it, or a corresponding
+    TimeCard object if you did.
+
+    Return the outputs in the form of a tuple, e.g.,
+    `return (tensor,), non_tensor, time_card`.
     """
     raise NotImplementedError

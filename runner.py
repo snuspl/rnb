@@ -67,7 +67,7 @@ def runner(input_queue, output_queue, print_summary,
           if tpl is None:
             break
 
-          (signal, non_tensor_inputs), time_card = tpl
+          signal, non_tensor_inputs, time_card = tpl
 
           time_card.record('runner%d_start' % step_idx)
 
@@ -99,8 +99,8 @@ def runner(input_queue, output_queue, print_summary,
 
           time_card.record('inference%d_start' % step_idx)
 
-          tensor_outputs, non_tensor_outputs = \
-              model((tensor_input_placeholder, non_tensor_inputs))
+          tensor_outputs, non_tensor_outputs, time_card = \
+              model(tensor_input_placeholder, non_tensor_inputs, time_card)
           stream.synchronize()
 
           if shared_output_tensors is not None:
@@ -154,7 +154,7 @@ def runner(input_queue, output_queue, print_summary,
               else:
                 # no need to pass any signals, just enqueue empty signal
                 signal = None
-              output_queue.put_nowait(((signal, non_tensor_outputs), time_card))
+              output_queue.put_nowait((signal, non_tensor_outputs, time_card))
 
             except Full:
               print('[WARNING] Queue between runner step %d and %d is full. '
