@@ -1,6 +1,7 @@
+import math
 import torch
 from collections import namedtuple
-from torch.multiprocessing import Event
+from torch.multiprocessing import Event, Array
 from utils.class_utils import load_class
 
 # default number of shared tensors given to each process for writing outputs
@@ -103,12 +104,20 @@ class TensorEvent:
   Thus, the consumer should make sure that it calls event.set() AFTER the
   Tensors' contents have been copied to a safe area, such as the consumer's own
   local tensors.
+
+  This class also includes an Array object living on shared memory, consisting
+  of integers for indicating the valid region in each tensor. For example, if
+  a process uses only 3 rows of a 4-row tensor, then the corresponding entry
+  in the Array would be set to 3. Later, when values are read from the tensor
+  by another process, that process would first check the Array value and know
+  that it can ignore the final row.
   """
   def __init__(self, shapes, device, dtype=torch.float32):
     self.tensors = tuple(torch.empty(*shape, dtype=dtype, device=device)
                          for shape in shapes)
     self.event = Event()
     self.event.set()
+    self.valid_batch_sizes = Array('i', len(shapes))
 
 
 class SharedTensors:
@@ -138,7 +147,7 @@ class SharedTensors:
     self.tensors = [None]
 
     # we exclude the last step since the last step does not need output tensors
-    for step in pipeline[:-1]:
+    for step_idx, step in enumerate(pipeline[:-1]):
       # load the model class to check the output tensor shape of this step
       model_module_path = step['model']
 
@@ -155,6 +164,26 @@ class SharedTensors:
         step_output_tensors = [None for _ in step(['gpus'])]
 
       else:
+        num_segments = step.get('num_segments', 1)
+        if num_segments > 1:
+          # create smaller shared tensors if segment-based parallel
+          # execution is applied
+          new_shapes = []
+          for shape in shapes:
+            batch_size = shape[0]
+            if num_segments > batch_size:
+              raise ValueError('num_segments %d must be <= '
+                               'tensor batch size %d in step %d' %
+                               (num_segments, batch_size, step_idx))
+
+            # We set the shared tensor size to match the largest segment, in
+            # case segments have uneven shapes. For example, a 10-row tensor
+            # would be divided into 3 segments of 4, 3, and 3 rows each, and
+            # the corresponding shared tensor would have 4 rows.
+            segment_size = math.ceil(batch_size / num_segments)
+            new_shapes.append((segment_size, *shape[1:]))
+          shapes = new_shapes
+
         step_output_tensors = []
         for gpu in step['gpus']:
           device = torch.device('cuda:%d' % gpu)
