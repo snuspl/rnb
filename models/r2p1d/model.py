@@ -74,9 +74,9 @@ class R2P1DRunner(RunnerModel):
     # need to change return value accordingly
     return ((10, 400),)
 
-  def __call__(self, input):
-    (tensor,), _ = input
-    return ((self.model(tensor),), None)
+  def __call__(self, tensors, non_tensors, time_card):
+    tensor = tensors[0]
+    return (self.model(tensor),), None, time_card
 
 class R2P1DVideoPathIterator(VideoPathIterator):
   def __init__(self):
@@ -128,8 +128,8 @@ class R2P1DLoader(RunnerModel):
       pass
     self.loader.flush()
 
-  def __call__(self, input):
-    _, filename = input
+  def __call__(self, tensors, non_tensors, time_card):
+    filename = non_tensors
     self.loader.loadfile(filename)
     for frames in self.loader:
       pass
@@ -137,7 +137,7 @@ class R2P1DLoader(RunnerModel):
 
     frames = frames.float()
     frames = frames.permute(0, 2, 1, 3, 4)
-    return ((frames,), None)
+    return (frames,), None, time_card
 
   def __del__(self):
     self.loader.close()
@@ -201,8 +201,8 @@ class R2P1DSingleStep(RunnerModel):
     self.loader.flush()
     stream.synchronize()
 
-  def __call__(self, input):
-    _, filename = input
+  def __call__(self, tensors, non_tensors, time_card):
+    filename = non_tensors
     self.loader.loadfile(filename)
     for frames in self.loader:
       pass
@@ -211,7 +211,7 @@ class R2P1DSingleStep(RunnerModel):
     frames = frames.float()
     frames = frames.permute(0, 2, 1, 3, 4)
 
-    return ((self.model(frames),), None)
+    return (self.model(frames),), None, time_card
 
   def __del__(self):
     self.loader.close()
