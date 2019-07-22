@@ -217,9 +217,11 @@ if __name__ == '__main__':
   for step_idx, step in enumerate(pipeline):
     is_final_step = step_idx == len(pipeline) - 1
 
-    # We assume that all entries except 'model' and 'gpus' are model-specific parameters that need to be passed to the runner
+    # We assume that all entries except 'model', 'gpus', and 'num_segments' are
+    # model-specific parameters that need to be passed to the runner.
     model = step.pop('model')
     gpus = step.pop('gpus')
+    num_segments = step.pop('num_segments', 1)
     
     replica_dict = {}
     for instance_idx, gpu in enumerate(gpus):
@@ -246,7 +248,7 @@ if __name__ == '__main__':
                                      global_inference_counter, args.videos,
                                      termination_flag, step_idx,
                                      sta_bar, fin_bar,
-                                     model, shared_input_tensors,
+                                     model, num_segments, shared_input_tensors,
                                      shared_output_tensors),
                                kwargs=step)
 

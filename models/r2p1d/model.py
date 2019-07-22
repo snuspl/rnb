@@ -7,6 +7,7 @@ from itertools import cycle
 from models.r2p1d.sampler import R2P1DSampler
 from models.r2p1d.network import R2Plus1DClassifier, SpatioTemporalResBlock
 from models.r2p1d.network import R2Plus1DLayerWrapper
+from rnb_logging import TimeCard
 from runner_model import RunnerModel
 from video_path_provider import VideoPathIterator
 
@@ -158,7 +159,7 @@ class R2P1DSingleStep(RunnerModel):
   R2P1DLoader with R2P1DLayerRunner, excluding the functionality of specifying
   layer start and end indices (`start_index` and `end_index`).
   """
-  input_tensor_shape = (10, 3, 8, 112, 112)
+  input_shape = (10, 3, 8, 112, 112)
 
   def __init__(self, device, num_classes=400, layer_sizes=[2,2,2,2],
                block_type=SpatioTemporalResBlock):
@@ -181,7 +182,7 @@ class R2P1DSingleStep(RunnerModel):
 
     # warm up the neural network
     stream = torch.cuda.current_stream()
-    tmp = torch.randn(*self.input_tensor_shape, dtype=torch.float32).cuda()
+    tmp = torch.randn(*self.input_shape, dtype=torch.float32).cuda()
     for _ in range(3):
       _ = self.model(tmp)
       stream.synchronize()
@@ -222,3 +223,53 @@ class R2P1DSingleStep(RunnerModel):
   @staticmethod
   def output_shape():
     return ((10, 400),)
+
+
+class R2P1DAggregator(RunnerModel):
+  """RunnerModel that aggregates inference segments produced by R2P1DRunner."""
+  def __init__(self, device, aggregate=1):
+    super(R2P1DAggregator, self).__init__(device)
+    
+    # This parameter indicates the expected number of segments per inference
+    # instance. This should be equal to num_segments of a previous step.
+    self.aggregate = aggregate
+    self.results = {}
+
+  def __call__(self, tensors, non_tensors, time_card):
+    tensor = tensors[0]
+    # We don't really need to store the whole tensor as-is, because the final
+    # operation is an average followed by an argmax. We can reduce memory space
+    # by simply summing it by the batch dimension, which can be summed again
+    # with later incoming segments.
+    result = tensor.cpu().numpy().sum(axis=0)
+
+    if self.aggregate == 1:
+      # no need to perform any kind of segment aggregation,
+      # so just return immediately
+      return None, result.argmax(), time_card
+
+    if time_card.id not in self.results:
+      self.results[time_card.id] = (result, [time_card])
+      # this inference needs to wait for other segments
+      return None, None, None
+
+    else:
+      prev_result, prev_time_cards = self.results[time_card.id]
+      result = prev_result + result
+      time_cards = prev_time_cards + [time_card]
+
+      if len(time_cards) < self.aggregate:
+        # still waiting for other segments
+        self.results[time_card.id] = (result, time_cards)
+        return None, None, None
+      else:
+        # all segments have arrived
+        merged_time_card = TimeCard.merge(time_cards)
+        return None, result.argmax(), merged_time_card
+
+  def input_shape(self):
+    return ((10, 400),)
+
+  @staticmethod
+  def output_shape():
+    return None
