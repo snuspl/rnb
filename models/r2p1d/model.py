@@ -158,7 +158,7 @@ class R2P1DSingleStep(RunnerModel):
   R2P1DLoader with R2P1DLayerRunner, excluding the functionality of specifying
   layer start and end indices (`start_index` and `end_index`).
   """
-  input_shape = (10, 3, 8, 112, 112)
+  input_tensor_shape = (10, 3, 8, 112, 112)
 
   def __init__(self, device, num_classes=400, layer_sizes=[2,2,2,2],
                block_type=SpatioTemporalResBlock):
@@ -181,7 +181,7 @@ class R2P1DSingleStep(RunnerModel):
 
     # warm up the neural network
     stream = torch.cuda.current_stream()
-    tmp = torch.randn(*self.input_shape, dtype=torch.float32).cuda()
+    tmp = torch.randn(*self.input_tensor_shape, dtype=torch.float32).cuda()
     for _ in range(3):
       _ = self.model(tmp)
       stream.synchronize()
