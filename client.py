@@ -24,12 +24,15 @@ def poisson_client(video_path_iterator, filename_queue, beta, termination_flag,
 
   sta_bar.wait()
 
+  video_count = 0
   for video_path in load_class(video_path_iterator)():
     if termination_flag.value != TerminationFlag.UNSET:
       break
 
+    video_count += 1
+
     # create TimeCard instance to measure the time of key events
-    time_card = TimeCard()
+    time_card = TimeCard(video_count)
     time_card.record('enqueue_filename')
 
     try:
@@ -77,7 +80,7 @@ def bulk_client(video_path_iterator, filename_queue, num_videos, termination_fla
     video_count += 1
 
     # create TimeCard instance to measure the time of key events
-    time_card = TimeCard()
+    time_card = TimeCard(video_count)
     time_card.record('enqueue_filename')
 
     try:

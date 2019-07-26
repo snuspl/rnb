@@ -1,0 +1,23 @@
+{
+  "video_path_iterator": "models.r2p1d.model.R2P1DVideoPathIterator",
+  "pipeline": [
+    {
+      "model": "models.r2p1d.model.R2P1DLoader",
+      "gpus": [0],
+      "num_shared_tensors": 100,
+      "num_segments": 3
+    },
+    {
+      "model": "models.r2p1d.model.R2P1DRunner",
+      "gpus": [1,2,3,4,5,6,7],
+      "start_index": 1,
+      "end_index": 5,
+      "num_shared_tensors": 2
+    },
+    {
+      "model": "models.r2p1d.model.R2P1DAggregator",
+      "gpus": [-1],
+      "aggregate": 3
+    }
+  ]
+}

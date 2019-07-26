@@ -56,10 +56,15 @@ def sanity_check(args):
     # Track which gpus each step is trying to use, for case 4.
     gpus_to_use_per_step = []
 
-    for step in pipeline:
+    for step_idx, step in enumerate(pipeline):
       assert isinstance(step, dict)
       assert isinstance(step['model'], str)
       assert isinstance(step['gpus'], list)
+      if 'num_segments' in step:
+        assert isinstance(step['num_segments'], int)
+        if step_idx == len(pipeline) - 1 and step['num_segments'] != 1:
+          print('[ERROR] The last step may not have multiple segments.')
+          sys.exit()
 
       gpus_to_use_this_step = set()
       for gpu in step['gpus']:
@@ -217,9 +222,11 @@ if __name__ == '__main__':
   for step_idx, step in enumerate(pipeline):
     is_final_step = step_idx == len(pipeline) - 1
 
-    # We assume that all entries except 'model' and 'gpus' are model-specific parameters that need to be passed to the runner
+    # We assume that all entries except 'model', 'gpus', and 'num_segments' are
+    # model-specific parameters that need to be passed to the runner.
     model = step.pop('model')
     gpus = step.pop('gpus')
+    num_segments = step.pop('num_segments', 1)
     
     replica_dict = {}
     for instance_idx, gpu in enumerate(gpus):
@@ -246,7 +253,7 @@ if __name__ == '__main__':
                                      global_inference_counter, args.videos,
                                      termination_flag, step_idx,
                                      sta_bar, fin_bar,
-                                     model, shared_input_tensors,
+                                     model, num_segments, shared_input_tensors,
                                      shared_output_tensors),
                                kwargs=step)
 

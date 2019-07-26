@@ -7,7 +7,8 @@ def runner(input_queue, output_queue, print_summary,
            global_inference_counter, num_videos,
            termination_flag, step_idx,
            sta_bar, fin_bar,
-           model_module_path, shared_input_tensors, shared_output_tensors,
+           model_module_path, num_segments,
+           shared_input_tensors, shared_output_tensors,
            **model_kwargs):
   # PyTorch seems to have an issue with sharing modules between
   # multiple processes, so we just do the imports here and
@@ -16,14 +17,20 @@ def runner(input_queue, output_queue, print_summary,
   import torch
   from queue import Empty, Full
   from tqdm import tqdm
-  from rnb_logging import logname, TimeCardSummary
+  from rnb_logging import logname, TimeCardSummary, TimeCard
   from control import TerminationFlag, Signal
   from utils.class_utils import load_class
 
   # Use our own CUDA stream to avoid synchronizing with other processes
+  # This is a no-op if g_idx is negative
   with torch.cuda.device(g_idx):
-    device = torch.device('cuda:%d' % g_idx)
-    stream = torch.cuda.Stream(device=g_idx)
+    # use CPU if g_idx is negative
+    device = torch.device('cuda:%d' % g_idx) if g_idx >= 0 \
+             else torch.device('cpu')
+    # do not create a CUDA stream if we use CPU
+    stream = torch.cuda.Stream(device=g_idx) if g_idx >= 0 else None
+
+    # this is a no-op if stream is None
     with torch.cuda.stream(stream):
       with torch.no_grad():
         # PyTorch seems to have a strange issue of taking a long time to exit
@@ -48,13 +55,13 @@ def runner(input_queue, output_queue, print_summary,
         shared_output_tensor_counter = 0
 
         # Create placeholder tensor to copy values from shared input tensors.
-        # In case the model does not provide any tensor shape, then we do not
-        # make any placeholders.
-        shapes = model.input_shape()
-        if shapes is not None:
+        # In case there are no shared input tensors, we do not
+        # make any placeholders either.
+        if shared_input_tensors is not None:
+          tensor_event = shared_input_tensors[0][0]
           tensor_input_placeholder = \
-              tuple(torch.empty(*shape, dtype=torch.float32).cuda()
-                    for shape in shapes)
+              tuple(torch.zeros_like(tensor, device=device)
+                    for tensor in tensor_event.tensors)
 
         sta_bar.wait()
 
@@ -83,41 +90,78 @@ def runner(input_queue, output_queue, print_summary,
                  termination_flag.value != TerminationFlag.UNSET:
                break
 
+
+            tensor_inputs = []
             # This is basically a device-to-device memcpy if the source tensors
             # are coming from a different device. If not, then this op becomes
             # a memcpy within the same device.
-            for placeholder, shared_tensor in zip(tensor_input_placeholder,
-                                                  tensor_event.tensors):
-              placeholder.copy_(shared_tensor)
+            for idx, (placeholder, shared_tensor) in \
+                enumerate(zip(tensor_input_placeholder, tensor_event.tensors)):
+              valid_batch_size = tensor_event.valid_batch_sizes[idx]
+
+              # only copy the valid regions of the shared input tensor
+              placeholder[:valid_batch_size].copy_(
+                  shared_tensor[:valid_batch_size])
+              tensor_inputs.append(placeholder[:valid_batch_size])
 
             # release the shared tensor to be reused later
             tensor_event.event.set()
 
           else:
             # this process does not use the shared tensor mechanism
-            tensor_input_placeholder = None
+            tensor_inputs = None
 
           time_card.record('inference%d_start' % step_idx)
 
           tensor_outputs, non_tensor_outputs, time_card = \
-              model(tensor_input_placeholder, non_tensor_inputs, time_card)
-          stream.synchronize()
+              model(tensor_inputs, non_tensor_inputs, time_card)
+          if stream is not None:
+            stream.synchronize()
 
-          if shared_output_tensors is not None:
-            # we need to copy the results into a shared output tensor
-            tensor_event = shared_output_tensors[shared_output_tensor_counter]
-
-            # check to see if the tensor has been released or not
-            # TODO #59: if this tensor is not ready, then check another one
-            tensor_event.event.wait()
-
-            for tensor_output, shared_tensor in zip(tensor_outputs,
-                                                    tensor_event.tensors):
-              shared_tensor.copy_(tensor_output)
-
-            tensor_event.event.clear()
+          # We assume that None for time_card means this runner has no outputs.
+          # In this case, nothing is passed to the next step, and the global
+          # inference counter is not incremented.
+          if time_card is None:
+            continue
 
           time_card.record('inference%d_finish' % step_idx)
+
+          if shared_output_tensors is not None:
+            # partition the output tensor into segments
+            for segment_idx in range(num_segments):
+              tensor_segment_outputs = []
+
+              for tensor_output in tensor_outputs:
+                # The indexing method below divides the batch by the number of
+                # segments (the division remainders are placed evenly across
+                # segments, starting from the first one).
+                # For example, a batch of 11 is partitioned into [0:4] (4 rows),
+                # [4:8] (4 rows), and [8:11] (3 rows).
+                q, r = divmod(tensor_output.shape[0], num_segments)
+                batch_start_idx = q * segment_idx + min(segment_idx, r)
+                batch_end_idx = q * (segment_idx+1) + min(segment_idx+1, r)
+
+                tensor_segment_outputs.append(
+                    tensor_output[batch_start_idx:batch_end_idx])
+
+              # we need to copy the results into a shared output tensor
+              counter = (shared_output_tensor_counter + segment_idx) % \
+                  len(shared_output_tensors)
+              tensor_event = shared_output_tensors[counter]
+
+              # check to see if the tensor has been released or not
+              # TODO #59: if this tensor is not ready, then check another one
+              tensor_event.event.wait()
+
+              # similar to when we copied values from shared input tensors,
+              # we make sure to copy only the valid regions of the output tensor
+              for idx, (tensor_segment_output, shared_tensor) in \
+                  enumerate(zip(tensor_segment_outputs, tensor_event.tensors)):
+                valid_batch_size = tensor_segment_output.shape[0]
+                shared_tensor[:valid_batch_size].copy_(tensor_segment_output)
+                tensor_event.valid_batch_sizes[idx] = valid_batch_size
+
+              tensor_event.event.clear()
 
 
           if is_final_step:
@@ -145,16 +189,22 @@ def runner(input_queue, output_queue, print_summary,
             # this is NOT the final step
             # pass on the intermediate tensor to the next step
             try:
-              if shared_output_tensors is not None:
-                # pass a Signal object for accessing shared tensors
-                signal = Signal(instance_idx, shared_output_tensor_counter)
-                shared_output_tensor_counter = \
-                    (shared_output_tensor_counter + 1) \
-                    % len(shared_output_tensors)
-              else:
-                # no need to pass any signals, just enqueue empty signal
-                signal = None
-              output_queue.put_nowait((signal, non_tensor_outputs, time_card))
+              for segment_idx in range(num_segments):
+                # we create a child of the current TimeCard if segment-based
+                # parallel execution has been applied
+                forked_tc = time_card.fork(segment_idx) if num_segments > 1 \
+                            else time_card
+
+                if shared_output_tensors is not None:
+                  # pass a Signal object for accessing shared tensors
+                  signal = Signal(instance_idx, shared_output_tensor_counter)
+                  shared_output_tensor_counter = \
+                      (shared_output_tensor_counter + 1) \
+                      % len(shared_output_tensors)
+                else:
+                  # no need to pass any signals, just enqueue empty signal
+                  signal = None
+                output_queue.put_nowait((signal, non_tensor_outputs, forked_tc))
 
             except Full:
               print('[WARNING] Queue between runner step %d and %d is full. '
