@@ -76,6 +76,7 @@ def runner(input_queue, output_queue, print_summary,
 
           signal, non_tensor_inputs, time_card = tpl
 
+          time_card.add_gpu(g_idx)
           time_card.record('runner%d_start' % step_idx)
 
           if signal is not None:

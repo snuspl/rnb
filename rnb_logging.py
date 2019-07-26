@@ -26,11 +26,17 @@ class TimeCard:
     self.id = id
     self.sub_id = None
     self.num_parent_timings = None
+    self.gpus = []
 
 
   def record(self, key):
     """Leave a record to indicate the event `key` has occured just now."""
     self.timings[key] = time.time()
+
+
+  def add_gpu(self, gpu):
+    """Indicate that this TimeCard has passed through a certain gpu."""
+    self.gpus.append((gpu,))
 
 
   def fork(self, sub_id):
@@ -44,7 +50,7 @@ class TimeCard:
     `num_parent_timings` is stored to keep track of when the fork was created,
     based on the number of entries in `timings`.
 
-    The `timings` of the child is a deep copy of the `timings` of the parent,
+    The instance attributes of the child are deep copies of those of the parent,
     so altering one will not affect the other.
 
     Note that forking from a TimeCard that was forked from yet another TimeCard
@@ -59,6 +65,7 @@ class TimeCard:
     child.timings = OrderedDict(self.timings)
     child.sub_id = sub_id
     child.num_parent_timings = len(self.timings)
+    child.gpus = list(self.gpus)
     return child
 
 
@@ -81,6 +88,9 @@ class TimeCard:
             'together. %d != %d' % (num_parent_timings,
                                     time_card.num_parent_timings))
 
+    # sort the TimeCards based on their sub_ids, for later use
+    time_cards = sorted(time_cards, key=lambda time_card: time_card.sub_id)
+
     for key_idx, key in enumerate(keys):
       if key_idx < num_parent_timings:
         # This is before the fork happened. All TimeCards will have the same
@@ -90,11 +100,25 @@ class TimeCard:
       else:
         # This is after the fork happened. For each key afterwards, append them
         # with the sub_id of the TimeCards and add them as separate entries.
-        sub_ids_with_values = [(time_card.sub_id, time_card.timings[key])
-                               for time_card in time_cards]
-        for sub_id, value in sorted(sub_ids_with_values):
-          sub_key = '%s-%s' % (key, str(sub_id))
-          merged_time_card.timings[sub_key] = value
+        for time_card in time_cards:
+          sub_key = '%s-%s' % (key, time_card.sub_id)
+          merged_time_card.timings[sub_key] = time_card.timings[key]
+
+    # merge the gpu logs
+    for gpu_per_time_card in zip(*[time_card.gpus for time_card in time_cards]):
+      gpu_per_time_card = tuple(gpu for tpl in gpu_per_time_card for gpu in tpl)
+      # gpu_per_time_card is a tuple of gpu indices, denoting the gpus that
+      # were used for a single step, e.g.,
+      # (1, 1, 1) --> all TimeCards passed through gpu 1 for this step
+      # (1, 2, 3) --> TimeCard 1 used gpu 1, TimeCard 2 used gpu 2, ..
+      if len(set(gpu_per_time_card)) == 1:
+        # all TimeCards passed through the same gpu
+        # simply store that single gpu index
+        merged_time_card.gpus.append((gpu_per_time_card[0],))
+      else:
+        # TimeCards passed through different gpus
+        # store the whole tuple
+        merged_time_card.gpus.append(gpu_per_time_card)
 
     return merged_time_card
 
@@ -103,6 +127,7 @@ class TimeCardSummary:
   """An aggregator class for TimeCards."""
   def __init__(self):
     self.summary = OrderedDict()
+    self.gpus_per_inference = []
 
 
   def register(self, time_card):
@@ -120,6 +145,8 @@ class TimeCardSummary:
 
     for key, ts in time_card.timings.items():
       self.summary[key].append(ts)
+
+    self.gpus_per_inference.append(time_card.gpus)
 
 
   def print_summary(self, num_skips):
@@ -142,7 +169,27 @@ class TimeCardSummary:
   def save_full_report(self, fp):
     """Logs all collected timings to the given file pointer."""
     fp.write(' '.join(self.keys))
+
+    # this should always be true, unless there was an error in the code and
+    # the experiment somehow terminated early
+    if len(self.gpus_per_inference) > 0:
+      for step_idx, gpu_per_time_card in enumerate(self.gpus_per_inference[0]):
+        if len(gpu_per_time_card) > 1:
+          # more than one gpu was used for this step
+          # create separate keys for each segment
+          for sub_id in range(len(gpu_per_time_card)):
+            fp.write(' ')
+            fp.write('gpu%d-%d' % (step_idx, sub_id))
+        else:
+          # only one gpu was used for this step
+          fp.write(' ')
+          fp.write('gpu%d' % step_idx)
+
     fp.write('\n')
-    for tpl in zip(*self.summary.values()):
+    for tpl, gpus_per_step in zip(zip(*self.summary.values()),
+                              self.gpus_per_inference):
       fp.write(' '.join(map(str, tpl)))
+      for gpu_per_time_card in gpus_per_step:
+        for gpu in gpu_per_time_card:
+          fp.write(' %d' % gpu)
       fp.write('\n')
