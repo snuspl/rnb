@@ -56,10 +56,15 @@ def sanity_check(args):
     # Track which gpus each step is trying to use, for case 4.
     gpus_to_use_per_step = []
 
-    for step in pipeline:
+    for step_idx, step in enumerate(pipeline):
       assert isinstance(step, dict)
       assert isinstance(step['model'], str)
       assert isinstance(step['gpus'], list)
+      if 'num_segments' in step:
+        assert isinstance(step['num_segments'], int)
+        if step_idx == len(pipeline) - 1 and step['num_segments'] != 1:
+          print('[ERROR] The last step may not have multiple segments.')
+          sys.exit()
 
       gpus_to_use_this_step = set()
       for gpu in step['gpus']:

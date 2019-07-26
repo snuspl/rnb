@@ -25,7 +25,7 @@ class TimeCard:
     self.timings = OrderedDict()
     self.id = id
     self.sub_id = None
-    self.diverged = None
+    self.num_parent_timings = None
 
 
   def record(self, key):
@@ -40,9 +40,9 @@ class TimeCard:
     augmented with additional information.
 
     The input parameter `sub_id` can be used to distinguish child clones forked
-    from the same parent TimeCard. Also, an internal integer `diverged` is
-    stored to keep track of when the fork was created, based on the number of
-    entries in `timings`.
+    from the same parent TimeCard. Also, an internal integer
+    `num_parent_timings` is stored to keep track of when the fork was created,
+    based on the number of entries in `timings`.
 
     The `timings` of the child is a deep copy of the `timings` of the parent,
     so altering one will not affect the other.
@@ -58,7 +58,7 @@ class TimeCard:
     child = TimeCard(self.id)
     child.timings = OrderedDict(self.timings)
     child.sub_id = sub_id
-    child.diverged = len(self.timings)
+    child.num_parent_timings = len(self.timings)
     return child
 
 
@@ -67,25 +67,25 @@ class TimeCard:
     """Merge several TimeCards that share the same parent into one.
 
     A merge is only allowed for TimeCards that have the same id, the same
-    timing keys, and the same diverged point.
+    timing keys, and the same num_parent_timings.
     """
     merged_time_card = TimeCard(time_cards[0].id)
     keys = time_cards[0].timings.keys()
-    diverged = time_cards[0].diverged
+    num_parent_timings = time_cards[0].num_parent_timings
     for time_card in time_cards[1:]:
       if keys != time_card.timings.keys():
         raise Exception('Trying to merge TimeCards with different timing keys.'
             ' %s != %s' % (str(keys), str(time_card.timings.keys())))
-      if diverged != time_card.diverged:
+      if num_parent_timings != time_card.num_parent_timings:
         raise Exception('Trying to merge TimeCards that were not forked '
-                        'together. %d != %d' % (diverged, time_card.diverged))
+            'together. %d != %d' % (num_parent_timings,
+                                    time_card.num_parent_timings))
 
     for key_idx, key in enumerate(keys):
-      if key_idx < diverged:
+      if key_idx < num_parent_timings:
         # This is before the fork happened. All TimeCards will have the same
         # timings anyway, so just copy the entries from any TimeCard.
         merged_time_card.timings[key] = time_cards[0].timings[key]
-        continue
 
       else:
         # This is after the fork happened. For each key afterwards, append them

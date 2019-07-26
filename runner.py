@@ -167,7 +167,7 @@ def runner(input_queue, output_queue, print_summary,
           if is_final_step:
             # increment the inference counter
             with global_inference_counter.get_lock():
-              global_inference_counter.value += num_segments
+              global_inference_counter.value += 1
 
               if print_summary:
                 new_counter_value = global_inference_counter.value

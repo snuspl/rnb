@@ -2,7 +2,6 @@
   "video_path_iterator": "models.r2p1d.model.R2P1DVideoPathIterator",
   "pipeline": [
     {
-      
       "model": "models.r2p1d.model.R2P1DLoader",
       "gpus": [0],
       "num_shared_tensors": 100,
