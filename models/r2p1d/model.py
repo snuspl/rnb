@@ -11,7 +11,7 @@ from rnb_logging import TimeCard
 from runner_model import RunnerModel
 from video_path_provider import VideoPathIterator
 
-CKPT_PATH = '/cmsdata/ssd0/cmslab/Kinetics-400/ckpt/model_data.pth.tar'
+CKPT_PATH = '/home/ubuntu/model_data.pth.tar'
 
 class R2P1DRunner(RunnerModel):
   """RunnerModel that can create any connected subset of the R(2+1)D model for RnB benchmark runners.
@@ -95,7 +95,7 @@ class R2P1DVideoPathIterator(VideoPathIterator):
     #     video4
     #     ...
     #   ...
-    root = '/cmsdata/ssd0/cmslab/Kinetics-400/sparta'
+    root = '/home/ubuntu/sparta'
     for label in os.listdir(root):
       for video in os.listdir(os.path.join(root, label)):
         videos.append(os.path.join(root, label, video))
@@ -117,9 +117,9 @@ class R2P1DLoader(RunnerModel):
                                  sampler=R2P1DSampler(clip_length=8))
 
     samples = [
-        '/cmsdata/ssd0/cmslab/Kinetics-400/sparta/laughing/0gR5FP7HpZ4_000024_000034.mp4',
-        '/cmsdata/ssd0/cmslab/Kinetics-400/sparta/laughing/2WowmnRTyqY_000203_000213.mp4',
-        '/cmsdata/ssd0/cmslab/Kinetics-400/sparta/laughing/5GXEjJjgGcc_000058_000068.mp4',
+        '/home/ubuntu/sparta/laughing/0gR5FP7HpZ4_000024_000034.mp4',
+        '/home/ubuntu/sparta/laughing/2WowmnRTyqY_000203_000213.mp4',
+        '/home/ubuntu/sparta/laughing/5GXEjJjgGcc_000058_000068.mp4',
     ]
 
     # warm up GPU with a few inferences
@@ -140,8 +140,6 @@ class R2P1DLoader(RunnerModel):
     frames = frames.permute(0, 2, 1, 3, 4)
     return (frames,), None, time_card
 
-  def __del__(self):
-    self.loader.close()
 
   def input_shape(self):
     return None
@@ -190,9 +188,9 @@ class R2P1DSingleStep(RunnerModel):
 
     # warm up the loader
     samples = [
-        '/cmsdata/ssd0/cmslab/Kinetics-400/sparta/laughing/0gR5FP7HpZ4_000024_000034.mp4',
-        '/cmsdata/ssd0/cmslab/Kinetics-400/sparta/laughing/2WowmnRTyqY_000203_000213.mp4',
-        '/cmsdata/ssd0/cmslab/Kinetics-400/sparta/laughing/5GXEjJjgGcc_000058_000068.mp4',
+        '/home/ubuntu/sparta/laughing/0gR5FP7HpZ4_000024_000034.mp4',
+        '/home/ubuntu/sparta/laughing/2WowmnRTyqY_000203_000213.mp4',
+        '/home/ubuntu/sparta/laughing/5GXEjJjgGcc_000058_000068.mp4',
     ]
 
     for sample in samples:
@@ -211,18 +209,18 @@ class R2P1DSingleStep(RunnerModel):
 
     frames = frames.float()
     frames = frames.permute(0, 2, 1, 3, 4)
+    frames = self.model(frames)
+    results = frames.sum(0).argmax().cpu().numpy()
 
-    return (self.model(frames),), None, time_card
+    return None, results, time_card
 
-  def __del__(self):
-    self.loader.close()
 
   def input_shape(self):
     return None
 
   @staticmethod
   def output_shape():
-    return ((10, 400),)
+    return None
 
 
 class R2P1DAggregator(RunnerModel):

@@ -39,7 +39,7 @@ def runner(input_queue, output_queue, print_summary,
         # to avoid the problem altogether.
         # This issue may have been fixed in the latest PyTorch release.
         # TODO #2: Update PyTorch version
-        insurance = torch.randn(1, device=torch.device('cuda:0'))
+        #insurance = torch.randn(1, device=torch.device('cuda:0'))
 
         # load model instance using the given module path
         model_class = load_class(model_module_path)

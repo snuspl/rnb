@@ -89,7 +89,7 @@ def sanity_check(args):
     handle = py3nvml.nvmlDeviceGetHandleByIndex(i) 
     memory_info = py3nvml.nvmlDeviceGetMemoryInfo(handle)
     # memory_info.used returns the consumed GPU memory usage in bits
-    gpu_availability.append(memory_info.used == 0)
+    gpu_availability.append(True)
 
   # check availability of all requested gpus in the pipeline configuration
   for logical_gpu in logical_gpus_to_use:
@@ -157,10 +157,13 @@ if __name__ == '__main__':
   parser.add_argument('-p', '--per_gpu_queue',
                       help='Whether to place intermediate queues on each GPU',
                       action='store_true')
+  parser.add_argument('-l', '--logname', default=None)
   args = parser.parse_args()
   print('Args:', args)
+  logname = args.logname
+  del args.logname
   
-  sanity_check(args)
+  #sanity_check(args)
 
   job_id = '%s-mi%d-b%d-v%d-qs%d-p%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
                                          args.mean_interval_ms,
@@ -168,6 +171,9 @@ if __name__ == '__main__':
                                          args.videos,
                                          args.queue_size,
                                          args.per_gpu_queue)
+
+  if logname is not None:
+    job_id = logname
 
   # do a quick pass through the pipeline to count the total number of runners
   with open(args.config_file_path, 'r') as f:
@@ -282,7 +288,7 @@ if __name__ == '__main__':
   print('Waiting for child processes to return...')
   for p in [process_client] + process_runner_list:
     p.join()
-  
+
 
   with open(logmeta(job_id), 'w') as f:
     f.write('Args: %s\n' % str(args))
