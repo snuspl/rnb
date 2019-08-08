@@ -225,6 +225,7 @@ if __name__ == '__main__':
   shared_tensors = SharedTensors(pipeline)
 
   process_runner_list = []
+  NUM_SEGMENTS = pipeline[0]['num_segments']
   for step_idx, step in enumerate(pipeline):
     is_final_step = step_idx == len(pipeline) - 1
 
@@ -238,10 +239,10 @@ if __name__ == '__main__':
     for instance_idx, gpu in enumerate(gpus):
       is_first_instance = instance_idx == 0
 
-      prev_queue, next_queue = shared_queues.get_tensor_queue(step_idx, gpu)
+      prev_queue, next_queue = shared_queues.get_tensor_queue(step_idx, gpu if step_idx != 2 else instance_idx)
 
       shared_input_tensors, shared_output_tensors = \
-          shared_tensors.get_tensors(step_idx, instance_idx)
+          shared_tensors.get_tensors(step_idx, instance_idx, NUM_SEGMENTS)
 
       # check the replica index of this particular runner, for this gpu
       # if this runner is the first, then give it index 0

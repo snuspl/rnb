@@ -21,6 +21,11 @@ def runner(input_queue, output_queue, print_summary,
   from control import TerminationFlag, Signal
   from utils.class_utils import load_class
 
+  if g_idx >= 0:
+    torch.cuda.set_device(g_idx)
+  else:
+    torch.cuda.set_device(r_idx)
+
   # Use our own CUDA stream to avoid synchronizing with other processes
   # This is a no-op if g_idx is negative
   with torch.cuda.device(g_idx):
@@ -198,7 +203,7 @@ def runner(input_queue, output_queue, print_summary,
 
                 if shared_output_tensors is not None:
                   # pass a Signal object for accessing shared tensors
-                  signal = Signal(instance_idx, shared_output_tensor_counter)
+                  signal = Signal(0 if step_idx != 1 else r_idx, shared_output_tensor_counter)
                   shared_output_tensor_counter = \
                       (shared_output_tensor_counter + 1) \
                       % len(shared_output_tensors)

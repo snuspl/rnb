@@ -196,7 +196,7 @@ class SharedTensors:
     # add Nones as output placeholders for the last step
     self.tensors.append([None for _ in pipeline[-1]['gpus']])
 
-  def get_tensors(self, step_idx, instance_idx):
+  def get_tensors(self, step_idx, instance_idx, num_segments):
     """Returns the shared input tensors and output tensors for a given process.
 
     The shared input tensors are returned as a 2-level list, containing the
@@ -204,7 +204,15 @@ class SharedTensors:
     the output tensors are returned as a 1-level list, since this process does
     not need to access the output tensors of other processes from the same step.
     """
-    return self.tensors[step_idx], self.tensors[step_idx + 1][instance_idx]
+    if self.tensors[step_idx] is None:
+      return self.tensors[step_idx], self.tensors[step_idx + 1][instance_idx]
+    elif step_idx == 1:
+      tmp_idx = instance_idx // num_segments
+      return self.tensors[step_idx][tmp_idx:tmp_idx+1], self.tensors[step_idx + 1][instance_idx]
+    elif step_idx == 2:
+      sta = num_segments * instance_idx
+      fin = num_segments * (instance_idx + 1)
+      return self.tensors[step_idx][sta:fin], self.tensors[step_idx + 1][instance_idx]
            
 
 # An integer tuple for accessing tensors from SharedTensors.
