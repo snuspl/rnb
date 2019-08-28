@@ -16,80 +16,6 @@ class TerminationFlag:
   FRAME_QUEUE_FULL = 2
 
 
-class SharedQueues:
-  """Manages intermediate queues that connect steps in the benchmark.
-
-  Args:
-    queue_class: The class to use when instantiating queues
-        (e.g., multiprocessing.Queue, torch.multiprocessing.Queue)
-    queue_size: Maximum number of items each queue can hold
-    pipeline: The whole pipeline info parsed from the input configuration file
-    per_gpu_queue: True if GPU-local queues should be used,
-        or False if global queues should be used
-  """
-  def __init__(self, queue_class, queue_size, pipeline, per_gpu_queue):
-    self.per_gpu_queue = per_gpu_queue
-    self.filename_queue = queue_class(queue_size)
-    self.num_steps = len(pipeline)
-
-    # self.tensor_queues is a list of dictionaries, e.g.,
-    # [
-    #   {0: filename_queue, 1: filename_queue}, (queue between client and step0)
-    #   {0: q_step01_gpu0, 1: q_step01_gpu1}, (set of queues between step 0 & 1)
-    #   {0: q_step12_gpu0, 1: q_step12_gpu1}, (set of queues between step 1 & 2)
-    #   ...
-    #   {0: None, 1: None} (the last step does not need an output queue)
-    # ]
-    # in case we use global queues, each dictionary will hold only one queue:
-    # [
-    #   {0: filename_queue}, (queue between client and step 0)
-    #   {0: q_step01}, (global queue between step 0 & 1)
-    #   {0: q_step12}, (global queue between step 1 & 2)
-    #   {0: None} (the last step does not need an output queue)
-    # ]
-    if per_gpu_queue:
-      # we assume that all steps use the same set of gpus
-      gpus = set(pipeline[0]['gpus'])
-      self.tensor_queues = [{gpu: queue_class(queue_size) for gpu in gpus}
-                            for step_idx in range(self.num_steps - 1)]
-
-      # The first step will receive filenames from client via filename_queue.
-      # Unlike tensor queues, filename_queue is always a global queue so we
-      # insert the same entry (self.filename_queue) for all gpu indices.
-      self.tensor_queues.insert(0, {gpu: self.filename_queue for gpu in gpus})
-
-      # The last step does need an output queue, so we pass None.
-      self.tensor_queues.append({gpu: None for gpu in gpus})
-
-    else:
-      # There is no need for differentiating queues according to gpu index,
-      # since there is only one global queue (per step) anyway.
-      # Thus, instead of using gpu index as the dictionary key, we simply set
-      # the number 0 as the only key.
-      # Note that we could even just abandon the dictionary type and do
-      # something like [queue_class(queue_size) for _ in range(...)],
-      # but we keep the dictionary type to simplify the logic of later
-      # choosing prev_queue and next_queue in get_tensor_queue().
-      self.tensor_queues = [{0: queue_class(queue_size)}
-                            for step_idx in range(self.num_steps - 1)]
-
-      # The first step will receive filenames from client via filename_queue.
-      self.tensor_queues.insert(0, {0: self.filename_queue})
-
-      # The last step does need an output queue, so we pass None.
-      self.tensor_queues.append({0: None})
-
-  def get_tensor_queue(self, step_idx, gpu_idx):
-    queue_idx = gpu_idx if self.per_gpu_queue else 0
-    prev_queue = self.tensor_queues[step_idx][queue_idx]
-    next_queue = self.tensor_queues[step_idx + 1][queue_idx]
-
-    return prev_queue, next_queue
-
-  def get_filename_queue(self):
-    return self.filename_queue
-
-
 class TensorEvent:
   """Basically a tuple of several torch.Tensors and a multiprocessing.Event.
 
@@ -120,92 +46,164 @@ class TensorEvent:
     self.valid_batch_sizes = Array('i', len(shapes))
 
 
-class SharedTensors:
-  """Manages intermediate tensors that are passed across steps in the benchmark.
+def get_segmented_shapes(shapes, num_segments):
+  if shapes is None or num_segments == 1:
+    return shapes
+
+  # create smaller shared tensors if segment-based parallel
+  # execution is applied
+  new_shapes = []
+  for shape in shapes:
+    batch_size = shape[0]
+    if num_segments > batch_size:
+      raise ValueError('num_segments %d must be <= tensor batch size %d' %
+                       (num_segments, batch_size))
+
+    # We set the shared tensor size to match the largest segment, in
+    # case segments have uneven shapes. For example, a 10-row tensor
+    # would be divided into 3 segments of 4, 3, and 3 rows each, and
+    # the corresponding shared tensor would have 4 rows.
+    segment_size = math.ceil(batch_size / num_segments)
+    new_shapes.append((segment_size, *shape[1:]))
+
+  return new_shapes
+
+
+class SharedQueuesAndTensors:
+  """Manages intermediate queues & tensors that connect steps in the benchmark.
 
   Args:
     pipeline: The whole pipeline info parsed from the input configuration file
+    queue_class: The class to use when instantiating queues
+        (e.g., multiprocessing.Queue, torch.multiprocessing.Queue)
+    queue_size: Maximum number of items each queue can hold
   """
-  def __init__(self, pipeline):
-    # self.tensors is a 3-level list of TensorEvents, e.g.,
+  def __init__(self, pipeline, queue_class, queue_size):
+    self.filename_queue = queue_class(queue_size)
+    self.num_steps = len(pipeline)
+
+    # self.queue_indices is a two-level list of tuples. Basically, it extracts
+    # all 'in_queue' and 'out_queues' entries from the pipeline for later use.
+    # E.g.,
     # [
-    #   None,                (the first step does not need shared input tensors)
-    #   [                                    (shared tensors between step 0 & 1)
-    #     [tensorEvent000, tensorEvent001, ...] (outputs of process 0 in step 0)
-    #     [tensorEvent010, tensorEvent011, ...] (outputs of process 1 in step 0)
-    #     [tensorEvent020, tensorEvent021, ...] (outputs of process 2 in step 0)
+    #   [
+    #     (step0_group0_in_queue, step0_group0_out_queue_list),
+    #     (step0_group1_in_queue, step0_group1_out_queue_list),
+    #     ...
     #   ],
-
-    #   [                                    (shared tensors between step 1 & 2)
-    #     [tensorEvent100, tensorEvent101, ...] (outputs of process 0 in step 1)
-    #     [tensorEvent110, tensorEvent111, ...] (outputs of process 1 in step 1)
-    #     [tensorEvent120, tensorEvent121, ...] (outputs of process 2 in step 1)
+    #   [
+    #     (step1_group0_in_queue, step1_group0_out_queue_list),
+    #     (step1_group1_in_queue, step1_group1_out_queue_list),
+    #     ...
     #   ],
-    #   ...,
-    #   [None, None, ...]    (the last step does not need shared output tensors)
+    #   ...
     # ]
-    self.tensors = [None]
+    self.queue_indices = []
 
-    # we exclude the last step since the last step does not need output tensors
-    for step_idx, step in enumerate(pipeline[:-1]):
+    # self.queues is a list of dictionaries holding all queues.
+    # E.g.,
+    # [
+    #   {0: queue_step0_0, 1: queue_step0_1, ... }, // output queues of step 0
+    #   {0: queue_step1_0, 1: queue_step1_1, ... }, // output queues of step 1
+    #   {0: queue_step2_0, 1: queue_step2_1, ... }, // output queues of step 2
+    #   ...
+    # ]
+    self.queues = []
+
+    # self.tensors is a four-level list holding all tensors.
+    # Level 0: step / Level 1: group / Level 2: instance /
+    # Level 3: index (< num_shared_tensors)
+    self.tensors = []
+
+    # fill in self.queue_indices, self.queues, and self.tensors for all steps
+    for step_idx, step in enumerate(pipeline):
+      step_queue_indices = []
+      step_queues = {}
+      step_tensors = []
+
       # load the model class to check the output tensor shape of this step
       model_module_path = step['model']
-
-      # we purposely do step.pop() instead of step[] in order to remove the
-      # entry from the pipeline dictionary
-      num_tensors_per_process = step.pop('num_shared_tensors',
-                                         DEFAULT_NUM_SHARED_TENSORS)
-
       model_class = load_class(model_module_path)
       shapes = model_class.output_shape()
 
-      if shapes is None:
-        # this step does not need shared output tensors
-        step_output_tensors = [None for _ in step(['gpus'])]
+      # update the shape in case we use segmentation
+      num_segments = step.get('num_segments', 1)
+      shapes = get_segmented_shapes(shapes, num_segments)
 
-      else:
-        num_segments = step.get('num_segments', 1)
-        if num_segments > 1:
-          # create smaller shared tensors if segment-based parallel
-          # execution is applied
-          new_shapes = []
-          for shape in shapes:
-            batch_size = shape[0]
-            if num_segments > batch_size:
-              raise ValueError('num_segments %d must be <= '
-                               'tensor batch size %d in step %d' %
-                               (num_segments, batch_size, step_idx))
+      num_tensors_per_process = step.get('num_shared_tensors',
+                                         DEFAULT_NUM_SHARED_TENSORS)
 
-            # We set the shared tensor size to match the largest segment, in
-            # case segments have uneven shapes. For example, a 10-row tensor
-            # would be divided into 3 segments of 4, 3, and 3 rows each, and
-            # the corresponding shared tensor would have 4 rows.
-            segment_size = math.ceil(batch_size / num_segments)
-            new_shapes.append((segment_size, *shape[1:]))
-          shapes = new_shapes
+      for group_idx, group in enumerate(step['queue_groups']):
+        in_queue_idx = group.get('in_queue', None)
+        out_queue_indices = group.get('out_queues', None)
 
-        step_output_tensors = []
-        for gpu in step['gpus']:
+        step_queue_indices.append((in_queue_idx, out_queue_indices))
+
+        # nothing more to do if this is the final step
+        if step_idx == len(pipeline) - 1:
+          continue
+
+        for out_queue_idx in out_queue_indices:
+          # avoid creating duplicate queues for the same queue index
+          if out_queue_idx in step_queues: continue
+          step_queues[out_queue_idx] = queue_class(queue_size)
+
+        group_tensors = []
+        for gpu in group['gpus']:
           device = torch.device('cuda:%d' % gpu)
           tensors = [TensorEvent(shapes, device)
                      for _ in range(num_tensors_per_process)]
-          step_output_tensors.append(tensors)
+          group_tensors.append(tensors)
+        step_tensors.append(group_tensors)
 
-      self.tensors.append(step_output_tensors)
 
-    # add Nones as output placeholders for the last step
-    self.tensors.append([None for _ in pipeline[-1]['gpus']])
+      self.queue_indices.append(step_queue_indices)
+      self.queues.append(step_queues)
+      self.tensors.append(step_tensors)
 
-  def get_tensors(self, step_idx, instance_idx):
-    """Returns the shared input tensors and output tensors for a given process.
+  def get_filename_queue(self):
+    return self.filename_queue
 
-    The shared input tensors are returned as a 2-level list, containing the
-    output tensors of all processes of the previous step. On the other hand,
-    the output tensors are returned as a 1-level list, since this process does
-    not need to access the output tensors of other processes from the same step.
-    """
-    return self.tensors[step_idx], self.tensors[step_idx + 1][instance_idx]
-           
+  def get_queues(self, step_idx, group_idx):
+    in_queue_idx, out_queue_indices = self.queue_indices[step_idx][group_idx]
+
+    # input queue is always the filename queue for the first step
+    in_queue = self.filename_queue if step_idx == 0 \
+               else self.queues[step_idx - 1][in_queue_idx]
+
+    # the last step does not need an output queue
+    # otherwise, fetch all queues that correspond to the output queue indices
+    out_queues = None if step_idx == self.num_steps - 1 \
+                 else [self.queues[step_idx][out_queue_idx]
+                       for out_queue_idx in out_queue_indices]
+
+    return in_queue, out_queues
+
+  def get_tensors(self, step_idx, group_idx, instance_idx):
+    in_queue_idx, out_queue_indices = self.queue_indices[step_idx][group_idx]
+
+    if step_idx == 0:
+      # the first step does not require any shared input tensors
+      in_tensors = None
+    else:
+      # check all groups from the previous step that write to my input queue ...
+      input_groups = []
+      for prev_group_idx, (_, prev_out_queue_indices) in \
+          enumerate(self.queue_indices[step_idx - 1]):
+        if in_queue_idx in prev_out_queue_indices:
+          input_groups.append(prev_group_idx)
+
+      # ... and fetch the tensors from those groups
+      in_tensors = {input_group_idx: self.tensors[step_idx - 1][input_group_idx]
+                    for input_group_idx in input_groups}
+
+
+    # the last step does not need shared ouptut tensors
+    out_tensors = None if step_idx == self.num_steps - 1 \
+                  else self.tensors[step_idx][group_idx][instance_idx]
+
+    return in_tensors, out_tensors
+
 
 # An integer tuple for accessing tensors from SharedTensors.
-Signal = namedtuple('Signal', ['instance_idx', 'tensor_idx'])
+Signal = namedtuple('Signal', ['group_idx', 'instance_idx', 'tensor_idx'])

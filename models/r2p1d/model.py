@@ -71,8 +71,8 @@ class R2P1DRunner(RunnerModel):
 
   @staticmethod
   def output_shape():
-    # TODO: the output shape may not be (10, 400), depending on self.end_index
-    # need to change return value accordingly
+    # TODO #69: the output shape may not be (10, 400),
+    # depending on self.end_index; need to change return value accordingly
     return ((10, 400),)
 
   def __call__(self, tensors, non_tensors, time_card):

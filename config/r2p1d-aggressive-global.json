@@ -2,14 +2,16 @@
   "video_path_iterator": "models.r2p1d.model.R2P1DVideoPathIterator",
   "pipeline": [
     {
-      
       "model": "models.r2p1d.model.R2P1DLoader",
-      "queue_groups": [ { "gpus": [0], "out_queues": [0] } ],
-      "num_shared_tensors": 100
+      "queue_groups": [
+        { "gpus": [0,1,2,3,4,5,6,7], "out_queues": [0] }
+      ]
     },
     {
       "model": "models.r2p1d.model.R2P1DRunner",
-      "queue_groups": [ { "gpus": [0], "in_queue": 0 } ],
+      "queue_groups": [
+        { "gpus": [0,1,2,3,4,5,6,7], "in_queue": 0 }
+      ],
       "start_index": 1,
       "end_index": 5
     }
