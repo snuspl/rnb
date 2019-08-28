@@ -140,9 +140,6 @@ class R2P1DLoader(RunnerModel):
     frames = frames.permute(0, 2, 1, 3, 4)
     return (frames,), None, time_card
 
-  def __del__(self):
-    self.loader.close()
-
   def input_shape(self):
     return None
 
@@ -213,9 +210,6 @@ class R2P1DSingleStep(RunnerModel):
     frames = frames.permute(0, 2, 1, 3, 4)
 
     return (self.model(frames),), None, time_card
-
-  def __del__(self):
-    self.loader.close()
 
   def input_shape(self):
     return None
