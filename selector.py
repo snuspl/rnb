@@ -1,4 +1,4 @@
-class Selector:
+class QueueSelector:
   """Interface class for selecting output queue based on runner outputs."""
   def __init__(self, num_queues):
     pass
@@ -7,8 +7,8 @@ class Selector:
     raise NotImplementedError
 
 
-class RoundRobinSelector(Selector):
-  """A simple impl of Selector that chooses queues in a round-robin fashion."""
+class RoundRobinSelector(QueueSelector):
+  """A simple impl that chooses queues in a round-robin fashion."""
   def __init__(self, num_queues):
     self.num_queues = num_queues
     self.curr = 0

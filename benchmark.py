@@ -22,7 +22,7 @@ process if the input load is high.
 
 RESERVED_KEYWORDS = ['model', 'queue_groups', 'num_shared_tensors',
                      'num_segments', 'in_queue', 'out_queues', 'gpus',
-                     'selector']
+                     'queue_selector']
 
 def sanity_check(args):
   """Validate the given user arguments. 
@@ -226,7 +226,8 @@ if __name__ == '__main__':
     num_segments = step.get('num_segments', 1)
     
     for group_idx, group in enumerate(queue_groups):
-      selector_path = group.get('selector', 'selector.RoundRobinSelector')
+      queue_selector_path = group.get('queue_selector',
+                                      'selector.RoundRobinSelector')
 
       # all entries that are not listed in RESERVED_KEYWORDS will be passed to
       # the runner as model-specific parameters
@@ -248,7 +249,7 @@ if __name__ == '__main__':
 
 
         process_runner = Process(target=runner,
-                                 args=(in_queue, out_queues, selector_path,
+                                 args=(in_queue, out_queues, queue_selector_path,
                                        print_summary,
                                        job_id, gpu, group_idx, instance_idx,
                                        global_inference_counter, args.videos,

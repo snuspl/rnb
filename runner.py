@@ -2,7 +2,7 @@
 """
 NUM_EXIT_MARKERS = 10
 NUM_SUMMARY_SKIPS = 10
-def runner(input_queue, output_queues, selector_path, print_summary,
+def runner(input_queue, output_queues, queue_selector_path, print_summary,
            job_id, g_idx, group_idx, instance_idx,
            global_inference_counter, num_videos,
            termination_flag, step_idx,
@@ -51,8 +51,8 @@ def runner(input_queue, output_queues, selector_path, print_summary,
           time_card_summary = TimeCardSummary()
         else:
           # instantitate selector for choosing which queue to write outputs to
-          selector_class = load_class(selector_path)
-          selector = selector_class(len(output_queues))
+          queue_selector_class = load_class(queue_selector_path)
+          queue_selector = queue_selector_class(len(output_queues))
 
         # keep track of the next position to write output tensors
         shared_output_tensor_counter = 0
@@ -194,7 +194,9 @@ def runner(input_queue, output_queues, selector_path, print_summary,
           else:
             # this is NOT the final step
             # pass on the intermediate tensor to the next step
-            output_queue_idx = selector.select(tensor_outputs, non_tensor_outputs, time_card)
+            output_queue_idx = queue_selector.select(tensor_outputs,
+                                                     non_tensor_outputs,
+                                                     time_card)
             output_queue = output_queues[output_queue_idx]
             try:
               for segment_idx in range(num_segments):
