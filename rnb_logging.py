@@ -14,9 +14,9 @@ def logmeta(job_id):
   return '%s/log-meta.txt' % root
 
 
-def logname(job_id, g_idx, r_idx):
+def logname(job_id, g_idx, group_idx, instance_idx):
   root = logroot(job_id)
-  return '%s/g%d-r%d.txt' % (root, g_idx, r_idx)
+  return '%s/g%d-group%d-%d.txt' % (root, g_idx, group_idx, instance_idx)
 
 
 class TimeCard:

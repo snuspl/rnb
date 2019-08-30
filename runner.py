@@ -2,8 +2,8 @@
 """
 NUM_EXIT_MARKERS = 10
 NUM_SUMMARY_SKIPS = 10
-def runner(input_queue, output_queue, print_summary,
-           job_id, g_idx, r_idx, instance_idx,
+def runner(input_queue, output_queues, queue_selector_path, print_summary,
+           job_id, g_idx, group_idx, instance_idx,
            global_inference_counter, num_videos,
            termination_flag, step_idx,
            sta_bar, fin_bar,
@@ -21,6 +21,13 @@ def runner(input_queue, output_queue, print_summary,
   from control import TerminationFlag, Signal
   from utils.class_utils import load_class
 
+  # We need to explicitly set the default device of this process to be g_idx.
+  # Otherwise, this process will request memory on GPU 0 for a short time right
+  # before it terminates (for some bizarre reason), which might lead to an OOM
+  # on GPU 0 if many runners are present.
+  if g_idx >= 0:
+    torch.cuda.set_device(g_idx)
+
   # Use our own CUDA stream to avoid synchronizing with other processes
   # This is a no-op if g_idx is negative
   with torch.cuda.device(g_idx):
@@ -33,23 +40,19 @@ def runner(input_queue, output_queue, print_summary,
     # this is a no-op if stream is None
     with torch.cuda.stream(stream):
       with torch.no_grad():
-        # PyTorch seems to have a strange issue of taking a long time to exit
-        # the Python process in case it doesn't use the first GPU...
-        # so we allocate a small tensor at the first GPU before doing anything
-        # to avoid the problem altogether.
-        # This issue may have been fixed in the latest PyTorch release.
-        # TODO #2: Update PyTorch version
-        insurance = torch.randn(1, device=torch.device('cuda:0'))
-
         # load model instance using the given module path
         model_class = load_class(model_module_path)
         model = model_class(device, **model_kwargs)
 
 
-        is_final_step = output_queue is None
+        is_final_step = output_queues is None
         if is_final_step:
           # collect incoming time measurements for later logging
           time_card_summary = TimeCardSummary()
+        else:
+          # instantitate selector for choosing which queue to write outputs to
+          queue_selector_class = load_class(queue_selector_path)
+          queue_selector = queue_selector_class(len(output_queues))
 
         # keep track of the next position to write output tensors
         shared_output_tensor_counter = 0
@@ -58,7 +61,9 @@ def runner(input_queue, output_queue, print_summary,
         # In case there are no shared input tensors, we do not
         # make any placeholders either.
         if shared_input_tensors is not None:
-          tensor_event = shared_input_tensors[0][0]
+          # pick any random tensor from input tensors, since
+          # all tensors have the same shape anyway
+          tensor_event = list(shared_input_tensors.values())[0][0][0]
           tensor_input_placeholder = \
               tuple(torch.zeros_like(tensor, device=device)
                     for tensor in tensor_event.tensors)
@@ -81,8 +86,8 @@ def runner(input_queue, output_queue, print_summary,
 
           if signal is not None:
             # we need to copy values from the designated shared input tensor
-            signal_instance_idx, tensor_idx = signal
-            tensor_event = shared_input_tensors[signal_instance_idx][tensor_idx]
+            signal_group_idx, signal_instance_idx, tensor_idx = signal
+            tensor_event = shared_input_tensors[signal_group_idx][signal_instance_idx][tensor_idx]
 
             # Under normal circumstances, the event should not be set yet.
             # However, this may not be true if the job is terminating, in which
@@ -189,6 +194,10 @@ def runner(input_queue, output_queue, print_summary,
           else:
             # this is NOT the final step
             # pass on the intermediate tensor to the next step
+            output_queue_idx = queue_selector.select(tensor_outputs,
+                                                     non_tensor_outputs,
+                                                     time_card)
+            output_queue = output_queues[output_queue_idx]
             try:
               for segment_idx in range(num_segments):
                 # we create a child of the current TimeCard if segment-based
@@ -198,7 +207,7 @@ def runner(input_queue, output_queue, print_summary,
 
                 if shared_output_tensors is not None:
                   # pass a Signal object for accessing shared tensors
-                  signal = Signal(instance_idx, shared_output_tensor_counter)
+                  signal = Signal(group_idx, instance_idx, shared_output_tensor_counter)
                   shared_output_tensor_counter = \
                       (shared_output_tensor_counter + 1) \
                       % len(shared_output_tensors)
@@ -219,25 +228,28 @@ def runner(input_queue, output_queue, print_summary,
           # mark the end of the input stream
           try:
             for _ in range(NUM_EXIT_MARKERS):
-              output_queue.put_nowait(None)
+              for output_queue in output_queues:
+                output_queue.put_nowait(None)
           except Full:
             pass
 
         if shared_input_tensors is not None:
           # release all shared input tensors in case any process from the
           # previous step is waiting for a tensor to be released
-          for instance_tensors in shared_input_tensors:
-            for protected_tensor in instance_tensors:
-              protected_tensor.event.set()
+          for group_tensors in shared_input_tensors.values():
+            for instance_tensors in group_tensors:
+              for protected_tensor in instance_tensors:
+                protected_tensor.event.set()
 
   fin_bar.wait()
-  if output_queue is not None:
-    output_queue.cancel_join_thread()
+  if output_queues is not None:
+    for output_queue in output_queues:
+      output_queue.cancel_join_thread()
 
   if is_final_step:
     # write statistics AFTER the barrier so that
     # throughput is not affected by unnecessary file I/O
-    with open(logname(job_id, g_idx, r_idx), 'w') as f:
+    with open(logname(job_id, g_idx, group_idx, instance_idx), 'w') as f:
       time_card_summary.save_full_report(f)
 
     # quick summary of the statistics gathered

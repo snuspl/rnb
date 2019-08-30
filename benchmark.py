@@ -20,6 +20,10 @@ process if the input load is high.
                queue                         queue
 """
 
+RESERVED_KEYWORDS = ['model', 'queue_groups', 'num_shared_tensors',
+                     'num_segments', 'in_queue', 'out_queues', 'gpus',
+                     'queue_selector']
+
 def sanity_check(args):
   """Validate the given user arguments. 
 
@@ -33,10 +37,6 @@ def sanity_check(args):
      If a GPU has no process running, but is consuming some memory, we will regard the GPU as 'not-free', 
      and prevent users from using it. If user requires any GPU that is either
      not accessible or not free, the program will also terminate.
-  4) The per_gpu_queue option is valid only when all steps use the same set of
-     GPUs. Thus, we examine which GPUs each step is using, and terminate the
-     program if the sets are different. This check is ignored if per_gpu_queue
-     is not true.
   """
   import json
   import os
@@ -49,29 +49,42 @@ def sanity_check(args):
       config = json.load(f)
     pipeline = config['pipeline']
     assert isinstance(pipeline, list)
+    video_path_iterator = config['video_path_iterator']
+    assert isinstance(video_path_iterator, str)
 
     # Track which gpus are going to be used, for case 3.
     logical_gpus_to_use = set()
 
-    # Track which gpus each step is trying to use, for case 4.
-    gpus_to_use_per_step = []
-
     for step_idx, step in enumerate(pipeline):
+      is_first_step = step_idx == 0
+      is_final_step = step_idx == len(pipeline) - 1
       assert isinstance(step, dict)
       assert isinstance(step['model'], str)
-      assert isinstance(step['gpus'], list)
+      assert isinstance(step['queue_groups'], list)
       if 'num_segments' in step:
         assert isinstance(step['num_segments'], int)
-        if step_idx == len(pipeline) - 1 and step['num_segments'] != 1:
+        if is_final_step and step['num_segments'] != 1:
           print('[ERROR] The last step may not have multiple segments.')
           sys.exit()
 
-      gpus_to_use_this_step = set()
-      for gpu in step['gpus']:
-        assert isinstance(gpu, int)
-        logical_gpus_to_use.add(gpu)
-        gpus_to_use_this_step.add(gpu)
-      gpus_to_use_per_step.append(gpus_to_use_this_step)
+      if 'num_shared_tensors' in step:
+        assert isinstance(step['num_shared_tensors'], int)
+        if is_final_step:
+          print('[ERROR] The last step does not need shared output tensors.')
+          sys.exit()
+
+      for group in step['queue_groups']:
+        logical_gpus_to_use.update([gpu for gpu in group['gpus'] if gpu >= 0])
+
+      if not is_first_step:
+        in_queues = set(group['in_queue'] for group in step['queue_groups'])
+        if in_queues != out_queues:
+          print('[ERROR] Output queues of step %d do not match with '
+                'input queues of step %d' % (step_idx - 1, step_idx))
+          sys.exit()
+      if not is_final_step:
+        out_queues = [group['out_queues'] for group in step['queue_groups']]
+        out_queues = set(item for sublist in out_queues for item in sublist)
 
   except Exception as err:
     print('[ERROR] Malformed pipeline configuration file. See below:')
@@ -110,13 +123,6 @@ def sanity_check(args):
       sys.exit()
   
   py3nvml.nvmlShutdown()
-
-  # Case 4: Compare the GPU sets of all steps
-  if args.per_gpu_queue:
-    gpus_first_step = gpus_to_use_per_step[0]
-    if not all([gpus == gpus_first_step for gpus in gpus_to_use_per_step[1:]]):
-      print('[ERROR] All steps must use the same GPUs for per_gpu_queue mode.')
-      sys.exit()
   
 if __name__ == '__main__':
   # placing these imports before the if statement results in a
@@ -136,7 +142,7 @@ if __name__ == '__main__':
 
   # change these if you want to use different client/loader/runner impls
   from rnb_logging import logmeta, logroot
-  from control import TerminationFlag, SharedQueues, SharedTensors
+  from control import TerminationFlag, SharedQueuesAndTensors
   from client import *
   from runner import runner
 
@@ -154,26 +160,23 @@ if __name__ == '__main__':
   parser.add_argument('-c', '--config_file_path',
                       help='File path of the pipeline configuration file',
                       type=str, default='config/r2p1d-whole.json')
-  parser.add_argument('-p', '--per_gpu_queue',
-                      help='Whether to place intermediate queues on each GPU',
-                      action='store_true')
   args = parser.parse_args()
   print('Args:', args)
   
   sanity_check(args)
 
-  job_id = '%s-mi%d-b%d-v%d-qs%d-p%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
+  job_id = '%s-mi%d-b%d-v%d-qs%d' % (dt.today().strftime('%y%m%d_%H%M%S'),
                                          args.mean_interval_ms,
                                          args.batch_size,
                                          args.videos,
-                                         args.queue_size,
-                                         args.per_gpu_queue)
+                                         args.queue_size)
 
   # do a quick pass through the pipeline to count the total number of runners
   with open(args.config_file_path, 'r') as f:
     config = json.load(f)
   pipeline = config['pipeline']
-  num_runners = sum([len(step['gpus']) for step in pipeline])
+  num_runners = sum(sum(len(group['gpus']) for group in step['queue_groups'])
+                    for step in pipeline)
 
   # total num of processes
   # runners + one client + one main process (this one)
@@ -196,10 +199,9 @@ if __name__ == '__main__':
   # (mean_interval_ms = 0 is a special case where all videos are put in queues at once)
   queue_size = args.queue_size if args.mean_interval_ms > 0 else args.videos + num_runners + 1
 
-  # create SharedQueues object for managing queues between steps
-  shared_queues = SharedQueues(Queue, queue_size, pipeline,
-                                  args.per_gpu_queue)
-  filename_queue = shared_queues.get_filename_queue()
+  # create queues and tensors according to the pipeline
+  queues_tensors = SharedQueuesAndTensors(pipeline, Queue, queue_size)
+  filename_queue = queues_tensors.get_filename_queue()
 
   video_path_iterator = config['video_path_iterator']
 
@@ -215,51 +217,49 @@ if __name__ == '__main__':
   process_client = Process(target=client_impl,
                            args=client_args)
 
-  # create SharedTensors object for managing shared tensors between steps
-  shared_tensors = SharedTensors(pipeline)
-
   process_runner_list = []
   for step_idx, step in enumerate(pipeline):
     is_final_step = step_idx == len(pipeline) - 1
 
-    # We assume that all entries except 'model', 'gpus', and 'num_segments' are
-    # model-specific parameters that need to be passed to the runner.
-    model = step.pop('model')
-    gpus = step.pop('gpus')
-    num_segments = step.pop('num_segments', 1)
+    model = step['model']
+    queue_groups = step['queue_groups']
+    num_segments = step.get('num_segments', 1)
     
-    replica_dict = {}
-    for instance_idx, gpu in enumerate(gpus):
-      is_first_instance = instance_idx == 0
+    for group_idx, group in enumerate(queue_groups):
+      queue_selector_path = group.get('queue_selector',
+                                      'selector.RoundRobinSelector')
 
-      prev_queue, next_queue = shared_queues.get_tensor_queue(step_idx, gpu)
+      # all entries that are not listed in RESERVED_KEYWORDS will be passed to
+      # the runner as model-specific parameters
+      step_kwargs = dict(step)
+      step_kwargs.update(group)
+      for k in RESERVED_KEYWORDS:
+        step_kwargs.pop(k, None)
 
-      shared_input_tensors, shared_output_tensors = \
-          shared_tensors.get_tensors(step_idx, instance_idx)
+      for instance_idx, gpu in enumerate(group['gpus']):
+        is_first_instance = group_idx == 0 and instance_idx == 0
 
-      # check the replica index of this particular runner, for this gpu
-      # if this runner is the first, then give it index 0
-      replica_idx = replica_dict.get(gpu, 0)
+        in_queue, out_queues = queues_tensors.get_queues(step_idx, group_idx)
 
-      # we only want a single instance of the last step to print summaries
-      print_summary = is_final_step and is_first_instance
+        shared_input_tensors, shared_output_tensors = \
+            queues_tensors.get_tensors(step_idx, group_idx, instance_idx)
 
-      # the last two queues in `queues` are
-      # the input and output queue for this step, respectively
-      process_runner = Process(target=runner,
-                               args=(prev_queue, next_queue,
-                                     print_summary,
-                                     job_id, gpu, replica_idx, instance_idx,
-                                     global_inference_counter, args.videos,
-                                     termination_flag, step_idx,
-                                     sta_bar, fin_bar,
-                                     model, num_segments, shared_input_tensors,
-                                     shared_output_tensors),
-                               kwargs=step)
+        # we only want a single instance of the last step to print summaries
+        print_summary = is_final_step and is_first_instance
 
-      replica_dict[gpu] = replica_idx + 1
-      process_runner_list.append(process_runner)
 
+        process_runner = Process(target=runner,
+                                 args=(in_queue, out_queues, queue_selector_path,
+                                       print_summary,
+                                       job_id, gpu, group_idx, instance_idx,
+                                       global_inference_counter, args.videos,
+                                       termination_flag, step_idx,
+                                       sta_bar, fin_bar,
+                                       model, num_segments, shared_input_tensors,
+                                       shared_output_tensors),
+                                 kwargs=step_kwargs)
+
+        process_runner_list.append(process_runner)
 
   for p in [process_client] + process_runner_list:
     p.start()

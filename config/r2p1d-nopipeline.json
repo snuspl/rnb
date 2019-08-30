@@ -3,7 +3,7 @@
   "pipeline": [
     {
       "model": "models.r2p1d.model.R2P1DSingleStep",
-      "gpus": [0, 1]
+      "queue_groups": [ { "gpus": [0,1,2,3,4,5,6,7] } ]
     }
   ]
 }
