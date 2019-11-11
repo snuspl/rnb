@@ -1,0 +1,3 @@
+[submodule "R2Plus1D-PyTorch"]
+	path = R2Plus1D-PyTorch
+	url = https://github.com/irhum/R2Plus1D-PyTorch.git
