@@ -135,6 +135,7 @@ if __name__ == '__main__':
   import json
   import os
   import shutil
+  import sys
   import time
   from arg_utils import *
   from datetime import datetime as dt
@@ -149,18 +150,26 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('-mi', '--mean_interval_ms',
                       help='Mean event interval time (Poisson), milliseconds',
-                      type=nonnegative_int, default=100)
+                      type=nonnegative_int, default=3)
   parser.add_argument('-b', '--batch_size', help='Video batch size per replica',
                       type=positive_int, default=1)
   parser.add_argument('-v', '--videos', help='Total number of videos to run',
                       type=positive_int, default=2000)
   parser.add_argument('-qs', '--queue_size',
                       help='Maximum queue size for inter-process queues',
-                      type=positive_int, default=500)
+                      type=positive_int, default=50000)
   parser.add_argument('-c', '--config_file_path',
                       help='File path of the pipeline configuration file',
                       type=str, default='config/r2p1d-whole.json')
+  parser.add_argument('--check',
+                      help='Quick check if all imports are working correctly',
+                      action='store_true')
   args = parser.parse_args()
+
+  if args.check:
+    print('RnB is ready to go!')
+    sys.exit()
+
   print('Args:', args)
   
   sanity_check(args)
@@ -276,7 +285,8 @@ if __name__ == '__main__':
   time_end = time.time()
   print('FINISH! %f' % time_end)
   total_time = time_end - time_start
-  print('That took %f seconds' % total_time)
+  print('Time: %f sec' % total_time)
+  print('Number of videos: %d videos' % args.videos)
 
 
   print('Waiting for child processes to return...')

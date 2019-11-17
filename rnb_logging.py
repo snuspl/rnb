@@ -123,6 +123,25 @@ class TimeCard:
     return merged_time_card
 
 
+class TimeCardList:
+  def __init__(self, time_cards):
+    self.time_cards = time_cards
+
+
+  def record(self, key):
+    for time_card in self.time_cards:
+      time_card.record(key)
+
+
+  def add_gpu(self, gpu):
+    for time_card in self.time_cards:
+      time_card.add_gpu(gpu)
+
+
+  def fork(self, sub_id):
+    raise NotImplementedError('TimeCardLists cannot be forked.')
+
+
 class TimeCardSummary:
   """An aggregator class for TimeCards."""
   def __init__(self):
