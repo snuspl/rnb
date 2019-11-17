@@ -8,6 +8,7 @@ from models.r2p1d.sampler import R2P1DSampler
 from models.r2p1d.network import R2Plus1DLayerWrapper
 from rnb_logging import TimeCard
 from runner_model import RunnerModel
+from selector import QueueSelector
 from video_path_provider import VideoPathIterator
 
 r2p1d_network =  __import__('R2Plus1D-PyTorch.network', fromlist=('SpatioTemporalResBlock', 'R2Plus1DClassifier'))
@@ -114,10 +115,14 @@ class R2P1DVideoPathIterator(VideoPathIterator):
 
 class R2P1DLoader(RunnerModel):
   """Impl of loading video frames using NVVL, for the R(2+1)D model."""
-  def __init__(self, device):
+  def __init__(self, device,
+               num_clips_population=[1, 15], num_clips_weights=[10, 1]):
+    sampler = R2P1DSampler(clip_length=8,
+                           num_clips_population=num_clips_population,
+                           num_clips_weights=num_clips_weights)
     self.loader = nvvl.RnBLoader(width=112, height=112,
                                  consecutive_frames=8, device_id=device.index,
-                                 sampler=R2P1DSampler(clip_length=8))
+                                 sampler=sampler)
 
     samples = [
         '/cmsdata/ssd0/cmslab/Kinetics-400/sparta/laughing/0gR5FP7HpZ4_000024_000034.mp4',
@@ -139,6 +144,8 @@ class R2P1DLoader(RunnerModel):
       pass
     self.loader.flush()
 
+    time_card.num_clips = frames.shape[0]
+
     frames = frames.float()
     frames = frames.permute(0, 2, 1, 3, 4)
     return (frames,), None, time_card
@@ -148,7 +155,7 @@ class R2P1DLoader(RunnerModel):
 
   @staticmethod
   def output_shape():
-    return ((10, 3, 8, 112, 112),)
+    return ((15, 3, 8, 112, 112),)
 
 
 class R2P1DSingleStep(RunnerModel):
@@ -162,7 +169,8 @@ class R2P1DSingleStep(RunnerModel):
   input_tensor_shape = (10, 3, 8, 112, 112)
 
   def __init__(self, device, num_classes=400, layer_sizes=[2,2,2,2],
-               block_type=SpatioTemporalResBlock):
+               block_type=SpatioTemporalResBlock,
+               num_clips_population=[1, 15], num_clips_weights=[10, 1]):
     super(R2P1DSingleStep, self).__init__(device)
 
     # instantiate the main neural network
@@ -174,10 +182,13 @@ class R2P1DSingleStep(RunnerModel):
     self.model.load_state_dict(ckpt['state_dict'])
 
 
+    sampler = R2P1DSampler(clip_length=8,
+                           num_clips_population=num_clips_population,
+                           num_clips_weights=num_clips_weights)
     # prepare the loader for converting videos into frames
     self.loader = nvvl.RnBLoader(width=112, height=112,
                                  consecutive_frames=8, device_id=device.index,
-                                 sampler=R2P1DSampler(clip_length=8))
+                                 sampler=sampler)
 
 
     # warm up the neural network
@@ -209,6 +220,8 @@ class R2P1DSingleStep(RunnerModel):
       pass
     self.loader.flush()
 
+    time_card.num_clips = frames.shape[0]
+
     frames = frames.float()
     frames = frames.permute(0, 2, 1, 3, 4)
 
@@ -219,7 +232,7 @@ class R2P1DSingleStep(RunnerModel):
 
   @staticmethod
   def output_shape():
-    return ((10, 400),)
+    return ((15, 400),)
 
 
 class R2P1DAggregator(RunnerModel):
@@ -270,3 +283,14 @@ class R2P1DAggregator(RunnerModel):
   @staticmethod
   def output_shape():
     return None
+
+
+class LargeSmallSelector(QueueSelector):
+  def __init__(self, num_queues):
+    assert num_queues == 2
+
+  def select(self, tensors, non_tensors, time_card):
+    if hasattr(time_card, 'num_clips') and time_card.num_clips == 15:
+      return 1
+    else:
+      return 0

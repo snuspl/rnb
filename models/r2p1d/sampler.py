@@ -22,7 +22,8 @@ from nvvl import Sampler
 import random
 
 class R2P1DSampler(Sampler):
-  def __init__(self, clip_length=8, num_clips=10):
+  def __init__(self, clip_length=8, num_clips=10,
+               num_clips_population=[1, 15], num_clips_weights=[10, 1]):
     """
     Args:
       clip_length: number of frames per clip
@@ -30,6 +31,8 @@ class R2P1DSampler(Sampler):
     """
     self.clip_length = clip_length
     self.num_clips = num_clips
+    self.num_clips_population = num_clips_population
+    self.num_clips_weights = num_clips_weights
 
   def _sample(self, length, num_clips):
     if num_clips == 0:
@@ -50,4 +53,10 @@ class R2P1DSampler(Sampler):
     return [item for sublist in frame_indices for item in sublist]
 
   def sample(self, length):
-    return self._sample(length, self.num_clips)
+    if self.num_clips_population is not None and \
+        self.num_clips_weights is not None:
+      num_clips = random.choices(self.num_clips_population,
+                                 self.num_clips_weights)[0]
+    else:
+      num_clips = self.num_clips
+    return self._sample(length, num_clips)

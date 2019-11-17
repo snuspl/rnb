@@ -17,9 +17,11 @@ def runner(input_queue, output_queues, queue_selector_path, print_summary,
   import torch
   from queue import Empty, Full
   from tqdm import tqdm
-  from rnb_logging import logname, TimeCardSummary, TimeCard
+  from rnb_logging import logname, TimeCardSummary, TimeCard, TimeCardList
   from control import TerminationFlag, Signal
   from utils.class_utils import load_class
+
+  torch.backends.cudnn.benchmark = True
 
   # We need to explicitly set the default device of this process to be g_idx.
   # Otherwise, this process will request memory on GPU 0 for a short time right
@@ -172,8 +174,11 @@ def runner(input_queue, output_queues, queue_selector_path, print_summary,
 
           if is_final_step:
             # increment the inference counter
+            num_inferences = 1 if not isinstance(time_card, TimeCardList) \
+                               else len(time_card.time_cards)
             with global_inference_counter.get_lock():
-              global_inference_counter.value += 1
+              tmp = global_inference_counter.value
+              global_inference_counter.value = tmp + num_inferences
 
               if print_summary:
                 new_counter_value = global_inference_counter.value
@@ -181,14 +186,19 @@ def runner(input_queue, output_queues, queue_selector_path, print_summary,
                   progress_bar.update(new_counter_value - old_global_inference_counter_value)
                   old_global_inference_counter_value = new_counter_value
 
-              if global_inference_counter.value == num_videos:
-                print('Finished processing %d videos' % num_videos)
-                termination_flag.value = TerminationFlag.TARGET_NUM_VIDEOS_REACHED
-              elif global_inference_counter.value > num_videos:
-                # we've already reached our goal; abort immediately
-                break
+              if global_inference_counter.value >= num_videos:
+                if tmp < num_videos:
+                  print('Finished processing %d videos' % num_videos)
+                  termination_flag.value = TerminationFlag.TARGET_NUM_VIDEOS_REACHED
+                else:
+                  # we've already reached our goal; abort immediately
+                  break
 
-            time_card_summary.register(time_card)
+            if isinstance(time_card, TimeCardList):
+              for tc in time_card.time_cards:
+                time_card_summary.register(tc)
+            else:
+              time_card_summary.register(time_card)
 
 
           else:
