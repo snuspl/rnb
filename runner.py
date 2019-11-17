@@ -21,6 +21,7 @@ def runner(input_queue, output_queues, queue_selector_path, print_summary,
   from control import TerminationFlag, Signal
   from utils.class_utils import load_class
 
+  # TODO #72: Investigate `torch.backends.cudnn.benchmark`
   torch.backends.cudnn.benchmark = True
 
   # We need to explicitly set the default device of this process to be g_idx.
