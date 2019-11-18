@@ -47,6 +47,7 @@ class R2P1DRunner(RunnerModel):
       layer_sizes = [2 for _ in range(start_index, end_index+1)]
     self.start_index = start_index
     self.model = R2Plus1DLayerWrapper(start_index, end_index, num_classes, layer_sizes, block_type).to(device)
+    self.device = device
     ckpt = torch.load(CKPT_PATH, map_location=device)
 
     state_dict = {}
@@ -69,6 +70,7 @@ class R2P1DRunner(RunnerModel):
     for _ in range(3):
       _ = self.model(tmp)
       stream.synchronize()
+
     
   def input_shape(self):
     return (self.input_dict[self.start_index],)

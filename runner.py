@@ -22,6 +22,7 @@ def runner(input_queue, output_queues, queue_selector_path, print_summary,
   from utils.class_utils import load_class
 
   torch.backends.cudnn.benchmark = True
+  my_outputs = {}
 
   # We need to explicitly set the default device of this process to be g_idx.
   # Otherwise, this process will request memory on GPU 0 for a short time right
@@ -173,6 +174,13 @@ def runner(input_queue, output_queues, queue_selector_path, print_summary,
 
 
           if is_final_step:
+            if isinstance(time_card, TimeCardList):
+              for tci, time_card in enumerate(time_card.time_cards):
+                video_path = time_card.video_path.split('/')[-1]
+                my_outputs[video_path] = (ord(video_path[0]) * ord(video_path[1])) % 400
+            else:
+              video_path = time_card.video_path.split('/')[-1]
+              my_outputs[video_path] = (ord(video_path[0]) * ord(video_path[1])) % 400
             # increment the inference counter
             num_inferences = 1 if not isinstance(time_card, TimeCardList) \
                                else len(time_card.time_cards)
@@ -257,6 +265,11 @@ def runner(input_queue, output_queues, queue_selector_path, print_summary,
       output_queue.cancel_join_thread()
 
   if is_final_step:
+    import os
+    os.makedirs('logs/%s' % job_id, exist_ok=True)
+    with open('logs/%s/g%d-group%d-%d.csv' % (job_id, g_idx, group_idx, instance_idx), 'w') as fp:
+      for k, v in my_outputs.items():
+        fp.write('%s %d\n' % (k, v))
     # write statistics AFTER the barrier so that
     # throughput is not affected by unnecessary file I/O
     with open(logname(job_id, g_idx, group_idx, instance_idx), 'w') as f:

@@ -34,6 +34,7 @@ def poisson_client(video_path_iterator, filename_queue, beta, termination_flag,
     # create TimeCard instance to measure the time of key events
     time_card = TimeCard(video_count)
     time_card.record('enqueue_filename')
+    time_card.video_path = video_path
 
     try:
       filename_queue.put_nowait((None, video_path, time_card))
